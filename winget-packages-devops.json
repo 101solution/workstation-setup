@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Microsoft .NET SDK 6.0"
+  },
+  {
+    "name": "PowerShell"
+  },
+  {
+    "name": "Microsoft Azure CLI"
+  },
+  {
+    "name": "Ditto"
+  },
+  {
+    "name": "Git"
+  },
+  {
+    "name": "GitHub CLI"
+  },
+  {
+    "id": "Kubernetes.minikube"
+  },
+  {
+    "name": "Microsoft Visual Studio Code"
+  },
+{
+    "name": "Windows Terminal"
+  },
+  {
+    "name": "Postman"
+  },
+  {
+    "id": "JanDeDobbeleer.OhMyPosh"
+  }
+]
