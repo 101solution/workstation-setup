@@ -1,0 +1,50 @@
+[
+  {
+    "name": "cascadiacode",
+    "additionalParameters": ""
+  },
+  {
+    "name": "dotnet",
+    "additionalParameters": ""
+  },
+  {
+    "name": "pwsh",
+    "additionalParameters": ""
+  },
+  {
+    "name": "ditto",
+    "additionalParameters": ""
+  },
+  {
+    "name": "git",
+    "additionalParameters": ""
+  },
+  {
+    "name": "vscode",
+    "additionalParameters": ""
+  },
+{
+    "name": "microsoft-windows-terminal",
+    "additionalParameters": ""
+  },
+  {
+    "name": "github-desktop",
+    "additionalParameters": ""
+  },
+  {
+    "name": "postman",
+    "additionalParameters": ""
+  },
+  {
+    "name": "visualstudio2022enterprise",
+    "additionalParameters": ""
+  },
+  {
+    "name": "visualstudio2022-workload-netweb",
+    "additionalParameters": ""
+  },
+  {
+    "name": "visualstudio2022-workload-azure",
+    "additionalParameters": ""
+  }
+]
