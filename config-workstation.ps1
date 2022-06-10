@@ -15,9 +15,11 @@ filter timestamp { "$(Get-Date -Format o): $_" }
 $taskName = "workstation-config"
 $argString = "-executionpolicy bypass -file .\config-workstation.ps1 -role $role"
 New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
 
-$wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-if ($wingetCmd) {
+    Install-WinGet
+
+
     $wingetPackages = Get-Content .\winget-packages-$role.json | ConvertFrom-Json
     foreach ($pack in $wingetPackages) {
         Install-WinGetPackage -packageName $pack.name -packageId $pack.id
@@ -29,7 +31,7 @@ if ($wingetCmd) {
             Restart-Computer -Force
         }
     }
-}
+
 
 $chocoPackages = Get-Content .\choco-packages-$role.json | ConvertFrom-Json
 Install-Choco
@@ -57,6 +59,9 @@ if (-not $wslCmd) {
         Restart-Computer -Force
     }
 }
+#Reload environment variables for the session
+Write-Output "Update Environment Variables in the session"  | timestamp
+Update-SessionEnvironment
 Install-Fonts
 #install posh-git
 
@@ -84,14 +89,21 @@ if ($null -eq $psReadLine) {
     Write-Output "Install PSReadLine"  | timestamp
     Install-Module -Name PSReadLine -Repository PSGallery -Force
 }
-
+pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force}"
 #copy pwsh profile
 Write-Output "Copy ps profile"  | timestamp
-Copy-Item "./profile.ps1" -Destination $Profile -Force
+$psProfilePath =  $PROFILE.CurrentUserAllHosts -Replace "WindowsPowerShell", "Powershell"
+    Write-Output "Creating ps profile"  | timestamp
+    New-Item -ItemType File -Path $psProfilePath -Force 
+    Write-Output "unlock ps profile"  | timestamp
+
+Copy-Item "./profile.ps1" -Destination $psProfilePath -Force
+Unblock-File -LiteralPath $psProfilePath
 
 #copy oh-my-posh theme
 Write-Output "Copy oh-my-posh theme"  | timestamp
 Copy-Item "./rudolfs-light.omp.json" -Destination $env:POSH_THEMES_PATH -Force
+
 
 #copy git config
 Write-Output "Copy git config"  | timestamp

@@ -1,33 +1,33 @@
 [
   {
-    "name": "Microsoft .NET SDK 6.0"
+    "id": "Microsoft.DotNet.SDK.6"
   },
   {
-    "name": "PowerShell"
+    "id": "Microsoft.PowerShell"
   },
   {
-    "name": "Microsoft Azure CLI"
+    "id": "Microsoft.AzureCLI"
   },
   {
-    "name": "Ditto"
+    "id": "Ditto.Ditto"
   },
   {
-    "name": "Git"
+    "id": "Git.Git"
   },
   {
-    "name": "GitHub CLI"
+    "id": "GitHub.cli"
   },
   {
     "id": "Kubernetes.minikube"
   },
   {
-    "name": "Microsoft Visual Studio Code"
+    "id": "Microsoft.VisualStudioCode"
   },
 {
-    "name": "Windows Terminal"
+    "id": "Microsoft.WindowsTerminal"
   },
   {
-    "name": "Postman"
+    "id": "Postman.Postman"
   },
   {
     "id": "JanDeDobbeleer.OhMyPosh"
