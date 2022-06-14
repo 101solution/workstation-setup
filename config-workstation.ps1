@@ -30,7 +30,7 @@ foreach ($pack in $wingetPackages) {
 $chocoPackages = Get-Content .\choco-packages-$role.json | ConvertFrom-Json
 Install-Choco
 foreach ($pack in $chocoPackages) {
-    Install-Package -packageName $pack.name -additionalParameters $pack.additionalParameters
+    Install-ChocoPackage -packageName $pack.name -additionalParameters $pack.additionalParameters
     #Write-Output "Check if computer need restart..."  | timestamp
     #$needRestart = Test-VMRestart
     #if ($needRestart) {
