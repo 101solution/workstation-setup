@@ -4,7 +4,7 @@ Set-Variable HOME "C:\Projects\" -Force
 # Set the "~" shortcut value for the FileSystem provider
 (get-psprovider 'FileSystem').Home = "C:\Projects\"
 Import-Module Posh-Git
-oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\rudolfs-light.omp.json" | Invoke-Expression
+oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\rudolfs-light-cs.omp.json" | Invoke-Expression
 Import-Module PSReadLine
 
 # Shows navigable menu of all options when hitting Tab

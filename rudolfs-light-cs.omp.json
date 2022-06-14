@@ -6,13 +6,6 @@
       "segments": [
         {
           "background": "#E0E0E0",
-          "foreground": "#BF231D",
-          "style": "plain",
-          "template": " \uf0e7 ",
-          "type": "root"
-        },
-        {
-          "background": "#E0E0E0",
           "foreground": "#EF7D00",
           "style": "plain",
           "template": " {{ .Icon }} ",
@@ -51,14 +44,8 @@
             }
           },
           "style": "plain",
-          "template": " {{ .Path }}",
+          "template": " {{ .Path }} ",
           "type": "path"
-        },
-        {
-          "foreground": "#E0E0E0",
-          "style": "plain",
-          "template": "\ue0b0 ",
-          "type": "text"
         }
       ],
       "type": "prompt"
@@ -69,10 +56,8 @@
       "segments": [
         {
           "foreground": "#E0E0E0",
-          "properties": {
-            "template": "\ue0b0 "
-          },
-          "style": "powerline",
+          "style": "plain",
+          "template": "\ue0b0 ",
           "type": "text"
         }
       ],
