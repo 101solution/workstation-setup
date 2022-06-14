@@ -74,16 +74,16 @@ function Install-WingetPackage {
     if (($packageName -ne $null) -and ($packageName -ne '')) {
         Write-Output "Checking package $packageName... using WinGet" | timestamp
 
-        $outputRaw = winget list -e --name $packageName
+        $outputRaw = winget list -e --name $packageName --accept-source-agreements
         $output = Convert-WingetOutput $outputRaw
         if ($null -eq $output) {
             Write-Output "    Installing package $packageName..." | timestamp
-            winget install -e --name $packageName -h --accept-package-agreements
+            winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements
         }
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageName..." | timestamp
-                winget upgrade -e --name $packageName -h --accept-package-agreements
+                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements
             }
             else {
                 Write-Output "    Latest version of $packageName... already installed" | timestamp
@@ -93,16 +93,16 @@ function Install-WingetPackage {
     else {
         Write-Output "Checking package $packageId... using WinGet" | timestamp
 
-        $outputRaw = winget list -e --id $packageId
+        $outputRaw = winget list -e --id $packageId --accept-source-agreements
         $output = Convert-WingetOutput $outputRaw
         if ($null -eq $output) {
             Write-Output "    Installing package $packageId..." | timestamp
-            winget install -e --id $packageId -h --accept-package-agreements
+            winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements
         }
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageId..." | timestamp
-                winget upgrade -e --id $packageId -h --accept-package-agreements
+                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements
             }
             else {
                 Write-Output "    Latest version of $packageId... already installed" | timestamp
