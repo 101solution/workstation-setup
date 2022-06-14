@@ -16,7 +16,7 @@ function Install-Choco {
     }
 }
 
-function Install-Package {
+function Install-ChocoPackage {
     param (
         [string] $packageName,
         [string] $additionalParameters,
