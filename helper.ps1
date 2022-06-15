@@ -56,7 +56,7 @@ function Convert-WingetOutput {
         [string]
         $packageId
     )
-    if ($wingetOutput.Count -ge 4) {
+    if ($wingetOutput -and ($wingetOutput.Count -ge 4)) {
         $header = $wingetOutput[2].Substring($wingetOutput[2].IndexOf("Id")) -replace '\s+', ","
         $data = $wingetOutput[4].Substring($wingetOutput[4].IndexOf($packageId)) -replace '\s+', ","
         return  @($header, $data) | ConvertFrom-Csv
