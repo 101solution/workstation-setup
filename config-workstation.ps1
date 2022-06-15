@@ -17,10 +17,9 @@ filter timestamp { "$(Get-Date -Format o): $_" }
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
 Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
 #Install Package Provider Source
-Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2
+Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ErrorAction SilentlyContinue
 #Install Prerequisites for WinGet
-Install-Package Microsoft.UI.Xaml -Force
-Install-WinGet
+Install-WinGetOffline
 $wingetPackages = Get-Content .\winget-packages-$role.json | ConvertFrom-Json
 foreach ($pack in $wingetPackages) {
     Install-WinGetPackage -packageName $pack.name -packageId $pack.id
@@ -28,18 +27,23 @@ foreach ($pack in $wingetPackages) {
 
     
 $chocoPackages = Get-Content .\choco-packages-$role.json | ConvertFrom-Json
-Install-Choco
-foreach ($pack in $chocoPackages) {
-    Install-ChocoPackage -packageName $pack.name -additionalParameters $pack.additionalParameters
-    #Write-Output "Check if computer need restart..."  | timestamp
-    #$needRestart = Test-VMRestart
-    #if ($needRestart) {
-    #    Write-Output "Restarting Computer"  | timestamp
-    #    $null = Stop-Transcript
-    #    Restart-Computer -Force
-    #}
+if ($chocoPackages -and $chocoPackages.Count -gt 0) {
+    Install-Choco
+    foreach ($pack in $chocoPackages) {
+        Install-ChocoPackage -packageName $pack.name -additionalParameters $pack.additionalParameters
+        #Write-Output "Check if computer need restart..."  | timestamp
+        #$needRestart = Test-VMRestart
+        #if ($needRestart) {
+        #    Write-Output "Restarting Computer"  | timestamp
+        #    $null = Stop-Transcript
+        #    Restart-Computer -Force
+        #}
+    }
 }
 
+$userToolsPath = "$env:UserProfile\tools"
+
+Install-Kubectl -InstallPath $userToolsPath
 
 #install wsl
 $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue

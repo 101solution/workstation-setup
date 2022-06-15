@@ -46,70 +46,7 @@ function Install-ChocoPackage {
         }
     }
 }
-function Convert-WingetOutput {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [string[]]
-        $wingetOutput,
-        [Parameter()]
-        [string]
-        $packageId
-    )
-    if ($wingetOutput -and ($wingetOutput.Count -ge 4)) {
-        $header = $wingetOutput[2].Substring($wingetOutput[2].IndexOf("Id")) -replace '\s+', ","
-        $data = $wingetOutput[4].Substring($wingetOutput[4].IndexOf($packageId)) -replace '\s+', ","
-        return  @($header, $data) | ConvertFrom-Csv
 
-    }
-    else {
-        return $null
-    }
-}
-function Install-WingetPackage {
-    param (
-        [string] $packageName,
-        [string] $packageId
-    )
-    if (($packageName -ne $null) -and ($packageName -ne '')) {
-        Write-Output "Checking package $packageName... using WinGet" | timestamp
-
-        $outputRaw = winget list -e --name $packageName --accept-source-agreements
-        $output = Convert-WingetOutput $outputRaw
-        if ($null -eq $output) {
-            Write-Output "    Installing package $packageName..." | timestamp
-            winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements
-        }
-        else {
-            if (($null -ne $output.Available) -and ($output.Available -ne "")) {
-                Write-Output "    Upgarding package $packageName..." | timestamp
-                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements
-            }
-            else {
-                Write-Output "    Latest version of $packageName... already installed" | timestamp
-            }
-        }
-    }
-    else {
-        Write-Output "Checking package $packageId... using WinGet" | timestamp
-
-        $outputRaw = winget list -e --id $packageId --accept-source-agreements
-        $output = Convert-WingetOutput $outputRaw
-        if ($null -eq $output) {
-            Write-Output "    Installing package $packageId..." | timestamp
-            winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements
-        }
-        else {
-            if (($null -ne $output.Available) -and ($output.Available -ne "")) {
-                Write-Output "    Upgarding package $packageId..." | timestamp
-                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements
-            }
-            else {
-                Write-Output "    Latest version of $packageId... already installed" | timestamp
-            }
-        }
-    }
-}
 Function New-WindowsTask {
     [CmdletBinding()]
     param (
@@ -182,100 +119,120 @@ Function Install-Fonts {
 }
 
 function Get-EnvironmentVariableNames([System.EnvironmentVariableTarget] $Scope) {
-  switch ($Scope) {
-    'User' { Get-Item 'HKCU:\Environment' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property }
-    'Machine' { Get-Item 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' | Select-Object -ExpandProperty Property }
-    'Process' { Get-ChildItem Env:\ | Select-Object -ExpandProperty Key }
-    default { throw "Unsupported environment scope: $Scope" }
-  }
+    switch ($Scope) {
+        'User' { Get-Item 'HKCU:\Environment' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property }
+        'Machine' { Get-Item 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' | Select-Object -ExpandProperty Property }
+        'Process' { Get-ChildItem Env:\ | Select-Object -ExpandProperty Key }
+        default { throw "Unsupported environment scope: $Scope" }
+    }
 }
 
 Function Get-EnvironmentVariable {
-[CmdletBinding()]
-[OutputType([string])]
-param(
-  [Parameter(Mandatory=$true)][string] $Name,
-  [Parameter(Mandatory=$true)][System.EnvironmentVariableTarget] $Scope,
-  [Parameter(Mandatory=$false)][switch] $PreserveVariables = $false,
-  [parameter(ValueFromRemainingArguments = $true)][Object[]] $ignoredArguments
-)
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string] $Name,
+        [Parameter(Mandatory = $true)][System.EnvironmentVariableTarget] $Scope,
+        [Parameter(Mandatory = $false)][switch] $PreserveVariables = $false,
+        [parameter(ValueFromRemainingArguments = $true)][Object[]] $ignoredArguments
+    )
 
-  # Do not log function call, it may expose variable names
-  ## Called from chocolateysetup.psm1 - wrap any Write-Host in try/catch
+    # Do not log function call, it may expose variable names
+    ## Called from chocolateysetup.psm1 - wrap any Write-Host in try/catch
 
-  [string] $MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME = "SYSTEM\CurrentControlSet\Control\Session Manager\Environment\";
-  [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME)
-  if ($Scope -eq [System.EnvironmentVariableTarget]::User) {
-    [string] $USER_ENVIRONMENT_REGISTRY_KEY_NAME = "Environment";
-    [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($USER_ENVIRONMENT_REGISTRY_KEY_NAME)
-  } elseif ($Scope -eq [System.EnvironmentVariableTarget]::Process) {
-    return [Environment]::GetEnvironmentVariable($Name, $Scope)
-  }
-
-  [Microsoft.Win32.RegistryValueOptions] $registryValueOptions = [Microsoft.Win32.RegistryValueOptions]::None
-
-  if ($PreserveVariables) {
-    Write-Verbose "Choosing not to expand environment names"
-    $registryValueOptions = [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
-  }
-
-  [string] $environmentVariableValue = [string]::Empty
-
-  try {
-    #Write-Verbose "Getting environment variable $Name"
-    if ($win32RegistryKey -ne $null) {
-      # Some versions of Windows do not have HKCU:\Environment
-      $environmentVariableValue = $win32RegistryKey.GetValue($Name, [string]::Empty, $registryValueOptions)
+    [string] $MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME = "SYSTEM\CurrentControlSet\Control\Session Manager\Environment\";
+    [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME)
+    if ($Scope -eq [System.EnvironmentVariableTarget]::User) {
+        [string] $USER_ENVIRONMENT_REGISTRY_KEY_NAME = "Environment";
+        [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($USER_ENVIRONMENT_REGISTRY_KEY_NAME)
     }
-  } catch {
-    Write-Debug "Unable to retrieve the $Name environment variable. Details: $_"
-  } finally {
-    if ($win32RegistryKey -ne $null) {
-      $win32RegistryKey.Close()
+    elseif ($Scope -eq [System.EnvironmentVariableTarget]::Process) {
+        return [Environment]::GetEnvironmentVariable($Name, $Scope)
     }
-  }
 
-  if ($environmentVariableValue -eq $null -or $environmentVariableValue -eq '') {
-    $environmentVariableValue = [Environment]::GetEnvironmentVariable($Name, $Scope)
-  }
+    [Microsoft.Win32.RegistryValueOptions] $registryValueOptions = [Microsoft.Win32.RegistryValueOptions]::None
 
-  return $environmentVariableValue
+    if ($PreserveVariables) {
+        Write-Verbose "Choosing not to expand environment names"
+        $registryValueOptions = [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+    }
+
+    [string] $environmentVariableValue = [string]::Empty
+
+    try {
+        #Write-Verbose "Getting environment variable $Name"
+        if ($win32RegistryKey -ne $null) {
+            # Some versions of Windows do not have HKCU:\Environment
+            $environmentVariableValue = $win32RegistryKey.GetValue($Name, [string]::Empty, $registryValueOptions)
+        }
+    }
+    catch {
+        Write-Debug "Unable to retrieve the $Name environment variable. Details: $_"
+    }
+    finally {
+        if ($win32RegistryKey -ne $null) {
+            $win32RegistryKey.Close()
+        }
+    }
+
+    if ($environmentVariableValue -eq $null -or $environmentVariableValue -eq '') {
+        $environmentVariableValue = [Environment]::GetEnvironmentVariable($Name, $Scope)
+    }
+
+    return $environmentVariableValue
 }
 
 Function Update-SessionEnvironment {
     $userName = $env:USERNAME
-  $architecture = $env:PROCESSOR_ARCHITECTURE
-  $psModulePath = $env:PSModulePath
+    $architecture = $env:PROCESSOR_ARCHITECTURE
+    $psModulePath = $env:PSModulePath
 
-  #ordering is important here, $user should override $machine...
-  $ScopeList = 'Process', 'Machine'
-  if ($userName -notin 'SYSTEM', "${env:COMPUTERNAME}`$") {
-    # but only if not running as the SYSTEM/machine in which case user can be ignored.
-    $ScopeList += 'User'
-  }
-  foreach ($Scope in $ScopeList) {
-    Get-EnvironmentVariableNames -Scope $Scope |
+    #ordering is important here, $user should override $machine...
+    $ScopeList = 'Process', 'Machine'
+    if ($userName -notin 'SYSTEM', "${env:COMPUTERNAME}`$") {
+        # but only if not running as the SYSTEM/machine in which case user can be ignored.
+        $ScopeList += 'User'
+    }
+    foreach ($Scope in $ScopeList) {
+        Get-EnvironmentVariableNames -Scope $Scope |
         ForEach-Object {
-          Set-Item "Env:$_" -Value (Get-EnvironmentVariable -Scope $Scope -Name $_)
+            Set-Item "Env:$_" -Value (Get-EnvironmentVariable -Scope $Scope -Name $_)
         }
-  }
+    }
 
-  #Path gets special treatment b/c it munges the two together
-  $paths = 'Machine', 'User' |
+    #Path gets special treatment b/c it munges the two together
+    $paths = 'Machine', 'User' |
     ForEach-Object {
       (Get-EnvironmentVariable -Name 'PATH' -Scope $_) -split ';'
     } |
     Select-Object -Unique
-  $Env:PATH = $paths -join ';'
+    $Env:PATH = $paths -join ';'
 
-  # PSModulePath is almost always updated by process, so we want to preserve it.
-  $env:PSModulePath = $psModulePath
+    # PSModulePath is almost always updated by process, so we want to preserve it.
+    $env:PSModulePath = $psModulePath
 
-  # reset user and architecture
-  if ($userName) { $env:USERNAME = $userName; }
-  if ($architecture) { $env:PROCESSOR_ARCHITECTURE = $architecture; }
+    # reset user and architecture
+    if ($userName) { $env:USERNAME = $userName; }
+    if ($architecture) { $env:PROCESSOR_ARCHITECTURE = $architecture; }
 }
 
+Function Install-WinGetOffline {
+    $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
+    if (-not $wingetCmd) {
+        
+        if (-not( Get-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -ErrorAction SilentlyContinue)) {
+            Write-Output "  Installing Microsoft.UI.Xaml..."
+            Install-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -Force
+        }
+        if (-not (Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop | Where-Object { $_.version -eq "14.0.30704.0" -and ($_.Architecture -eq "X64") })) {
+            Write-Output "  Installing Microsoft.VCLibs.140.00.UWPDesktop using offline mode..."
+            Add-AppxPackage $PSScriptRoot\winget\Microsoft.VCLibs.140.00.UWPDesktop_14.0.30704.0_x64__8wekyb3d8bbwe.Appx
+        }
+        Write-Output "Installing WinGet (Microsoft.DesktopAppInstaller) using offline mode..."
+        Add-AppxPackage $PSScriptRoot\winget\Microsoft.DesktopAppInstaller_2022.610.123.0_neutral___8wekyb3d8bbwe.Msixbundle
+    }
+    
+}
 Function Install-WinGet {
     #Install the latest package from GitHub
     [cmdletbinding(SupportsShouldProcess)]
@@ -289,71 +246,180 @@ Function Install-WinGet {
         [switch]$Passthru
     )
     $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-    if(-not $wingetCmd){
-    Write-Verbose "[$((Get-Date).TimeofDay)] Starting $($myinvocation.mycommand)"
+    if (-not $wingetCmd) {
+        Write-Verbose "[$((Get-Date).TimeofDay)] Starting Install winget"
 
-    if ($Iscoreclr -AND ($PSVersionTable.PSVersion -le 7.2)) {
-        Write-Warning "If running this command in PowerShell 7, you need at least version 7.2."
-        return
-    }
+        if ($Iscoreclr -AND ($PSVersionTable.PSVersion -le 7.2)) {
+            Write-Warning "If running this command in PowerShell 7, you need at least version 7.2."
+            return
+        }
+        if (-not( Get-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -ErrorAction SilentlyContinue)) {
+            Install-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -Force
+        }
+        #test for requirement
+        $requirement = Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop
 
-    #test for requirement
-    $Requirement = Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop
+        if (-Not $requirement) {
+            Write-Verbose "Installing Desktop App requirement"
+            Try {
+                $vclib = Join-Path -Path $env:temp -ChildPath "Microsoft.VCLibs.x64.14.00.Desktop.appx"
+                Invoke-WebRequest -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -UseBasicParsing -OutFile $vclib -ErrorAction stop
+                if (Test-Path $vclib) {
+                    Add-AppxPackage -Path $vclib -ErrorAction Stop
+                }
+                else {
+                    Throw "Failed to find $vclib"
+                }
+            }
+            Catch {
+                Throw $_
+            }
+        }
 
-    if (-Not $requirement) {
-        Write-Verbose "Installing Desktop App requirement"
+        $uri = "https://api.github.com/repos/microsoft/winget-cli/releases"
+
         Try {
-            $vclib = Join-Path -Path $env:temp -ChildPath "Microsoft.VCLibs.x64.14.00.Desktop.appx"
-            Invoke-WebRequest -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -UseBasicParsing -OutFile $vclib -ErrorAction stop
-            if (Test-Path $vclib) {
-                Add-AppxPackage -Path $vclib -ErrorAction Stop
+            Write-Verbose "[$((Get-Date).TimeofDay)] Getting information from $uri"
+            $get = Invoke-RestMethod -Uri $uri -Method Get -ErrorAction stop
+            if ($preview) {
+                Write-Verbose "[$((Get-Date).TimeofDay)] Getting latest preview release"
+                $data = ($get | where-object { $_.Prerelease } | Select-Object -first 1).Assets | Where-Object name -Match 'msixbundle'
             }
             else {
-                Throw "Failed to find $vclib"
+                Write-Verbose "[$((Get-Date).TimeofDay)] Getting latest stable release"
+                $data = ($get | where-object { -Not $_.Prerelease } | Select-Object -first 1).Assets | Where-Object name -Match 'msixbundle'
+
             }
-        }
+            #$data = $get | Select-Object -first 1
+
+            $appx = $data.browser_download_url
+            #$data.assets[0].browser_download_url
+            Write-Verbose "[$((Get-Date).TimeofDay)] $appx"
+            If ($pscmdlet.ShouldProcess($appx, "Downloading asset")) {
+                $file = Join-Path -Path $env:temp -ChildPath $data.name
+
+                Write-Verbose "[$((Get-Date).TimeofDay)] Saving to $file"
+                Invoke-WebRequest -Uri $appx -UseBasicParsing -DisableKeepAlive -OutFile $file
+
+                Write-Verbose "[$((Get-Date).TimeofDay)] Adding Appx Package"
+                Add-AppxPackage -Path $file -ErrorAction Stop
+
+                if ($passthru) {
+                    Get-AppxPackage microsoft.desktopAppInstaller
+                }
+            }
+        } #Try
         Catch {
+            Write-Verbose "[$((Get-Date).TimeofDay)] There was an error."
             Throw $_
         }
+        Write-Verbose "[$((Get-Date).TimeofDay)] Ending $($myinvocation.mycommand)"
     }
+}
+function Convert-WingetOutput {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string[]]
+        $wingetOutput,
+        [Parameter()]
+        [string]
+        $packageId
+    )
+    if ($wingetOutput -and ($wingetOutput.Count -ge 4)) {
+        $idIndex = $wingetOutput[2].IndexOf("Id")
+        $appIndex = $wingetOutput[4].IndexOf($packageId)
+        if ($idIndex -ge 0 -and $appIndex -ge 0) {
+            $header = $wingetOutput[2].Substring($idIndex) -replace '\s+', ","
+            $data = $wingetOutput[4].Substring($appIndex) -replace '\s+', ","
+            return  @($header, $data) | ConvertFrom-Csv
+        }
 
-    $uri = "https://api.github.com/repos/microsoft/winget-cli/releases"
+    }
+    else {
+        return $null
+    }
+}
+function Install-WingetPackage {
+    param (
+        [string] $packageName,
+        [string] $packageId
+    )
+    if (($null -ne $packageName) -and ($packageName -ne '')) {
+        Write-Output "Checking package $packageName... using WinGet" | timestamp
 
-    Try {
-        Write-Verbose "[$((Get-Date).TimeofDay)] Getting information from $uri"
-        $get = Invoke-RestMethod -Uri $uri -Method Get -ErrorAction stop
-        if ($preview) {
-            Write-Verbose "[$((Get-Date).TimeofDay)] Getting latest preview release"
-            $data = ($get | where-object {$_.Prerelease} | Select-Object -first 1).Assets | Where-Object name -Match 'msixbundle'
+        $outputRaw = winget list -e --name $packageName --accept-source-agreements
+        $output = Convert-WingetOutput $outputRaw
+        if ($null -eq $output) {
+            Write-Output "    Installing package $packageName..." | timestamp
+            winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements
         }
         else {
-            Write-Verbose "[$((Get-Date).TimeofDay)] Getting latest stable release"
-            $data = ($get | where-object {-Not $_.Prerelease} | Select-Object -first 1).Assets | Where-Object name -Match 'msixbundle'
-
-        }
-        #$data = $get | Select-Object -first 1
-
-        $appx = $data.browser_download_url
-        #$data.assets[0].browser_download_url
-        Write-Verbose "[$((Get-Date).TimeofDay)] $appx"
-        If ($pscmdlet.ShouldProcess($appx, "Downloading asset")) {
-            $file = Join-Path -Path $env:temp -ChildPath $data.name
-
-            Write-Verbose "[$((Get-Date).TimeofDay)] Saving to $file"
-            Invoke-WebRequest -Uri $appx -UseBasicParsing -DisableKeepAlive -OutFile $file
-
-            Write-Verbose "[$((Get-Date).TimeofDay)] Adding Appx Package"
-            Add-AppxPackage -Path $file -ErrorAction Stop
-
-            if ($passthru) {
-                Get-AppxPackage microsoft.desktopAppInstaller
+            if (($null -ne $output.Available) -and ($output.Available -ne "")) {
+                Write-Output "    Upgarding package $packageName..." | timestamp
+                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements
+            }
+            else {
+                Write-Output "    Latest version of $packageName... already installed" | timestamp
             }
         }
-    } #Try
-    Catch {
-        Write-Verbose "[$((Get-Date).TimeofDay)] There was an error."
-        Throw $_
     }
-    Write-Verbose "[$((Get-Date).TimeofDay)] Ending $($myinvocation.mycommand)"
+    else {
+        Write-Output "Checking package $packageId... using WinGet" | timestamp
+
+        $outputRaw = winget list -e --id $packageId --accept-source-agreements
+        $output = Convert-WingetOutput $outputRaw
+        if ($null -eq $output) {
+            Write-Output "    Installing package $packageId..." | timestamp
+            winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements
+        }
+        else {
+            if (($null -ne $output.Available) -and ($output.Available -ne "")) {
+                Write-Output "    Upgarding package $packageId..." | timestamp
+                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements
+            }
+            else {
+                Write-Output "    Latest version of $packageId... already installed" | timestamp
+            }
+        }
+    }
+}
+
+Function Update-EnvironmentPath {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]
+        $NewPath
+    )
+    if (Test-Path -path "$NewPath") {
+        $containerType = [EnvironmentVariableTarget]::Machine
+        $persistedPaths = [Environment]::GetEnvironmentVariable('Path', $containerType) -split ';'
+        if ($persistedPaths -notcontains $NewPath) {
+            $persistedPaths = $persistedPaths + $NewPath | Where-Object { $_ }
+            [Environment]::SetEnvironmentVariable('Path', $persistedPaths -join ';', $containerType)
+        }           
+    }
+}
+Function Install-Kubectl {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]
+        $InstallPath
+    )
+    if (-not(Test-Path $InstallPath)) {
+        New-Item -Path $InstallPath -ItemType Directory -Force
+    }
+    $kubrctlCmd = Get-Command -Name kubectl.exe -ErrorAction SilentlyContinue
+    if (-not(Test-Path $InstallPath)) {
+        New-Item -Path $InstallPath -ItemType Directory -Force
+    }
+    if (-not $kubrctlCmd) {
+        $latestVersion = Invoke-WebRequest -Uri "https://dl.k8s.io/release/stable.txt"
+
+        Invoke-WebRequest -Uri "https://dl.k8s.io/release/$latestVersion/bin/windows/amd64/kubectl.exe" -OutFile $InstallPath\kubectl.exe
+
+        Update-EnvironmentPath -NewPath $InstallPath
     }
 }
