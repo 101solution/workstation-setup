@@ -220,9 +220,9 @@ Function Install-WinGetOffline {
     $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
     if (-not $wingetCmd) {
         
-        if (-not( Get-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -ErrorAction SilentlyContinue)) {
-            Write-Output "  Installing Microsoft.UI.Xaml..."
-            Install-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -Force
+        if (-not (Get-AppPackage Microsoft.UI.Xaml.2.7 | Where-Object { $_.version -eq "7.2203.17001.0" -and ($_.Architecture -eq "X64") })) {
+            Write-Output "  Installing Microsoft.UI.Xaml.2.7 using offline mode..."
+            Add-AppxPackage $PSScriptRoot\winget\Microsoft.UI.Xaml.2.7_7.2203.17001.0_x64__8wekyb3d8bbwe.Appx
         }
         if (-not (Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop | Where-Object { $_.version -eq "14.0.30704.0" -and ($_.Architecture -eq "X64") })) {
             Write-Output "  Installing Microsoft.VCLibs.140.00.UWPDesktop using offline mode..."
