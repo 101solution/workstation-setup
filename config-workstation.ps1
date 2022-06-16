@@ -2,7 +2,10 @@
 param (
     [Parameter()]
     [string]
-    $role = "devops"
+    $role = "devops",
+    [Parameter()]
+    [boolean]
+    $enableWSL = $true
 )
 $logFilePath = "c:\temp\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
@@ -15,19 +18,8 @@ filter timestamp { "$(Get-Date -Format o): $_" }
 #$taskName = "workstation-config"
 #$argString = "-executionpolicy bypass -file .\config-workstation.ps1 -role $role"
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
-$nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-$nugetRequiredVersioText = "2.8.5.201"
-$nugetRequiredVersion = [System.Version]$nugetRequiredVersioText
-$currrentVersion = [System.Version]"0.0.0.0"
-if ($nugetProvider) {
-    $currrentVersion = [System.Version]$nugetProvider.Version
-}
-if ($currrentVersion -lt $nugetRequiredVersion) {
-    Write-Output "Install and Register NuGet Provider"
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
-    #Install Package Provider Source
-    Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ErrorAction SilentlyContinue | Out-Null
-}
+Write-Output "Register NuGet source ..."
+Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue
 #Install Prerequisites for WinGet
 Install-WinGetOffline
 $wingetPackages = Get-Content .\winget-packages-$role.json | ConvertFrom-Json
@@ -55,18 +47,6 @@ $userToolsPath = "$env:UserProfile\tools"
 
 Install-Kubectl -InstallPath $userToolsPath
 
-#install wsl
-$wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
-if (-not $wslCmd) {
-    wsl --install
-    #    Write-Output "Check if computer need restart..."  | timestamp
-    #    $needRestart = Test-VMRestart
-    #    if ($needRestart) {
-    #        Write-Output "Restarting Computer"  | timestamp
-    #        $null = Stop-Transcript
-    #        Restart-Computer -Force
-    #    }
-}
 #Reload environment variables for the session
 Write-Output "Update Environment Variables in the session"  | timestamp
 Update-SessionEnvironment
@@ -118,6 +98,25 @@ Write-Output "Copy git config"  | timestamp
 Copy-Item "./.gitconfig" -Destination $env:UserProfile -Force
 
 #Remove-WindowsTask -TaskName $taskName
-
+#install wsl
+if($enableWSL){
+    $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
+    if ($wslCmd) {
+        $result  = wsl -l -v
+        if(($result.Count -ge 5) -and ($result[2].IndexOf("Ubuntu"))){
+            Write-Output "wsl already configured"
+    
+        }
+        else {
+            Write-Output "Configuring WSL ..."
+            wsl --install
+            Write-Output "Restarting computer to continue wsl install...."
+            $null = Stop-Transcript
+            Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
+            Restart-Computer -Force
+        }
+        
+    }
+}
 $null = Stop-Transcript
 Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
