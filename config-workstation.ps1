@@ -15,9 +15,19 @@ filter timestamp { "$(Get-Date -Format o): $_" }
 #$taskName = "workstation-config"
 #$argString = "-executionpolicy bypass -file .\config-workstation.ps1 -role $role"
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
-Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-#Install Package Provider Source
-Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ErrorAction SilentlyContinue
+$nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+$nugetRequiredVersioText = "2.8.5.201"
+$nugetRequiredVersion = [System.Version]$nugetRequiredVersioText
+$currrentVersion = [System.Version]"0.0.0.0"
+if ($nugetProvider) {
+    $currrentVersion = [System.Version]$nugetProvider.Version
+}
+if ($currrentVersion -lt $nugetRequiredVersion) {
+    Write-Output "Install and Register NuGet Provider"
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+    #Install Package Provider Source
+    Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ErrorAction SilentlyContinue | Out-Null
+}
 #Install Prerequisites for WinGet
 Install-WinGetOffline
 $wingetPackages = Get-Content .\winget-packages-$role.json | ConvertFrom-Json

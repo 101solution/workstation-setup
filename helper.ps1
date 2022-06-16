@@ -114,8 +114,14 @@ Function Install-Fonts {
         [string]
         $fontFolder = "."
     )
-    Copy-Item "$fontFolder\$fontName.ttf" "C:\Windows\Fonts" -Force
-    New-ItemProperty -Name "$fontName (TrueType)" -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -PropertyType string -Value "$fontName.ttf" -Force
+    $fontRegPath = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
+    $fontReg = Get-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -ErrorAction SilentlyContinue 
+    $fontFileExixts = Test-Path -LiteralPath "C:\Windows\Fonts\$fontName.ttf"
+    if (-not($fontReg) -or -not($fontFileExixts)) {
+        Write-Output "Installing Font $fontName..."
+        Copy-Item "$fontFolder\$fontName.ttf" "C:\Windows\Fonts" -Force
+        New-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -PropertyType string -Value "$fontName.ttf" -Force
+    }
 }
 
 function Get-EnvironmentVariableNames([System.EnvironmentVariableTarget] $Scope) {
@@ -415,11 +421,23 @@ Function Install-Kubectl {
     if (-not(Test-Path $InstallPath)) {
         New-Item -Path $InstallPath -ItemType Directory -Force
     }
-    if (-not $kubrctlCmd) {
-        $latestVersion = Invoke-WebRequest -Uri "https://dl.k8s.io/release/stable.txt"
-
+    $latestVersion = Invoke-WebRequest -Uri "https://dl.k8s.io/release/stable.txt"
+    $installedVersion = "0.0.0.0"
+    if ($kubrctlCmd) {
+        $kubeVersion = kubectl version --output=json | ConvertFrom-Json
+        if ($kubeVersion) {
+            $installedVersion = $kubeVersion.ClientVersion.gitCommit
+        }
+        if ($installedVersion -eq $latestVersion) {
+            Write-Output "Removing old version of Kubectl ..."
+            Remove-Item -LiteralPath $InstallPath\kubectl.exe -Force
+        }
+    }
+    if ($installedVersion -eq $latestVersion) {
+        Write-Output "Downloading Kubectl $latestVersion ..."
         Invoke-WebRequest -Uri "https://dl.k8s.io/release/$latestVersion/bin/windows/amd64/kubectl.exe" -OutFile $InstallPath\kubectl.exe
 
         Update-EnvironmentPath -NewPath $InstallPath
     }
+
 }
