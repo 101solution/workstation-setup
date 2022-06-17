@@ -1,2 +1,11 @@
 [
+  {
+    "name": "kubernetes-cli",
+    "additionalParameters": ""
+  },
+
+  {
+    "name": "terraform",
+    "additionalParameters": ""
+  }
 ]

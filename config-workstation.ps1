@@ -43,9 +43,9 @@ if ($chocoPackages -and $chocoPackages.Count -gt 0) {
     }
 }
 
-$userToolsPath = "$env:UserProfile\tools"
+# $userToolsPath = "$env:UserProfile\tools"
 
-Install-Kubectl -InstallPath $userToolsPath
+# Install-Kubectl -InstallPath $userToolsPath
 
 #Reload environment variables for the session
 Write-Output "Update Environment Variables in the session"  | timestamp
@@ -100,10 +100,11 @@ Copy-Item "./.gitconfig" -Destination $env:UserProfile -Force
 #Remove-WindowsTask -TaskName $taskName
 #install wsl
 if($enableWSL){
+    Write-Output "Installing WSL ...."
     $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if ($wslCmd) {
         $result  = wsl -l -v
-        if(($result.Count -ge 5) -and ($result[2].IndexOf("Ubuntu"))){
+        if(($result.Count -ge 5) -and ($result[2].IndexOf("Ubuntu") -ge 0)){
             Write-Output "wsl already configured"
     
         }
@@ -117,6 +118,12 @@ if($enableWSL){
         }
         
     }
+    else{
+        Write-Warning "wsl.exe can't find, please fix it and try again  ...."
+    }
+}
+else{
+    Write-Output "Skipping WSL install...."
 }
 $null = Stop-Transcript
 Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force

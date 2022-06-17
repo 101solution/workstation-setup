@@ -8,6 +8,7 @@ function Install-Choco {
     else {
         Write-Output "Installing Chocolatery"  | timestamp
         Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        Update-SessionEnvironment
         $chocoCmd = Get-Command -Name choco.exe -ErrorAction SilentlyContinue
         if ($chocoCmd) {
             $chocoVersion = choco -v
@@ -236,6 +237,7 @@ Function Install-WinGetOffline {
         }
         Write-Output "Installing WinGet (Microsoft.DesktopAppInstaller) using offline mode..."
         Add-AppxPackage $PSScriptRoot\winget\Microsoft.DesktopAppInstaller_2022.610.123.0_neutral___8wekyb3d8bbwe.Msixbundle
+        Update-SessionEnvironment
     }
     
 }
@@ -438,6 +440,7 @@ Function Install-Kubectl {
         Invoke-WebRequest -Uri "https://dl.k8s.io/release/$latestVersion/bin/windows/amd64/kubectl.exe" -OutFile $InstallPath\kubectl.exe
 
         Update-EnvironmentPath -NewPath $InstallPath
+        Update-SessionEnvironment
     }
 
 }
