@@ -24,7 +24,13 @@ Register-PackageSource -provider NuGet -name nugetRepository -location https://w
 Install-WinGetOffline
 $wingetPackages = Get-Content .\winget-packages-$role.json | ConvertFrom-Json
 foreach ($pack in $wingetPackages) {
-    Install-WinGetPackage -packageName $pack.name -packageId $pack.id
+    if ($pack.override) {
+        Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override
+    }
+    else
+    {
+        Install-WinGetPackage -packageName $pack.name -packageId $pack.id
+    }
 }
 
     
@@ -99,12 +105,13 @@ Copy-Item "./.gitconfig" -Destination $env:UserProfile -Force
 
 #Remove-WindowsTask -TaskName $taskName
 #install wsl
-if($enableWSL){
+if ($enableWSL) {
     Write-Output "Installing WSL ...."
     $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if ($wslCmd) {
-        $result  = wsl -l -v
-        if(($result.Count -ge 5) -and ($result[2].IndexOf("Ubuntu") -ge 0)){
+        [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
+        $result = wsl -l -v
+        if (($result.Count -ge 2) -and ($result[1].Contains("Ubuntu"))) {
             Write-Output "wsl already configured"
     
         }
@@ -118,11 +125,11 @@ if($enableWSL){
         }
         
     }
-    else{
+    else {
         Write-Warning "wsl.exe can't find, please fix it and try again  ...."
     }
 }
-else{
+else {
     Write-Output "Skipping WSL install...."
 }
 $null = Stop-Transcript
