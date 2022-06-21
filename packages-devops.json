@@ -1,0 +1,63 @@
+{
+  "chocolatey": [
+    {
+      "name": "kubernetes-cli"
+    },
+    {
+      "name": "terraform"
+    }
+  ],
+  "winget": [
+    {
+      "id": "Microsoft.DotNet.SDK.6"
+    },
+    {
+      "id": "Microsoft.PowerShell"
+    },
+    {
+      "id": "Microsoft.AzureCLI"
+    },
+    {
+      "id": "Ditto.Ditto"
+    },
+    {
+      "id": "Git.Git"
+    },
+    {
+      "id": "GitHub.cli"
+    },
+    {
+      "id": "Kubernetes.minikube"
+    },
+    {
+      "id": "Microsoft.VisualStudioCode"
+    },
+    {
+      "id": "Microsoft.WindowsTerminal"
+    },
+    {
+      "id": "Postman.Postman"
+    },
+    {
+      "id": "JanDeDobbeleer.OhMyPosh"
+    },
+    {
+      "id": "Microsoft.VisualStudio.2022.Enterprise",
+      "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb"
+    }
+  ],
+  "powershellModule": [
+    {
+      "name": "posh-git"
+    },
+    {
+      "name": "Az"
+    },
+    {
+      "name": "PSReadLine"
+    },
+    {
+      "name": "PSRule"
+    }
+  ]
+}

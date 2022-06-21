@@ -465,3 +465,25 @@ Function Install-Kubectl {
     }
 
 }
+Function Install-PSModule {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]
+        $PsModuleName
+    )
+    Write-Output "Checking PS Module $PsModuleName... " | timestamp
+    $installedModule = Get-InstalledModule -Name $PsModuleName -ErrorAction SilentlyContinue
+
+    if ($null -eq $installedModule) {
+        Write-Output "Installing PS Module $PsModuleName..."  | timestamp
+        Install-Module -Name $PsModuleName -Repository PSGallery -Force
+    }
+    else {
+        $latestModule = Find-Module -Name $PsModuleName -Repository PSGallery
+        if($installedModule.Version.CompareTo($latestModule.Version) -lt 0){
+            Write-Output "Updating PS Module $PsModuleName from $($installedModule.Version.ToString()) to version $($latestModule.Version.ToString()) ..."  | timestamp
+            Update-Module -Name $PsModuleName -Force
+        }
+    }
+}

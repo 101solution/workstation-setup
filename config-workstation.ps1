@@ -20,21 +20,24 @@ filter timestamp { "$(Get-Date -Format o): $_" }
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
 Write-Output "Register NuGet source ..."
 Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue
-#Install Prerequisites for WinGet
-Install-WinGetOffline
-$wingetPackages = Get-Content .\winget-packages-$role.json | ConvertFrom-Json
-foreach ($pack in $wingetPackages) {
-    if ($pack.override) {
-        Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override
-    }
-    else
-    {
-        Install-WinGetPackage -packageName $pack.name -packageId $pack.id
+
+
+$packageConfig = Get-Content .\packages-$role.json | ConvertFrom-Json
+
+$wingetPackages = $packageConfig.winget
+if ($wingetPackages -and $wingetPackages.Count -gt 0) {
+    Install-WinGetOffline
+    foreach ($pack in $wingetPackages) {
+        if ($pack.override) {
+            Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override
+        }
+        else {
+            Install-WinGetPackage -packageName $pack.name -packageId $pack.id
+        }
     }
 }
-
     
-$chocoPackages = Get-Content .\choco-packages-$role.json | ConvertFrom-Json
+$chocoPackages = $packageConfig.chocolatey
 if ($chocoPackages -and $chocoPackages.Count -gt 0) {
     Install-Choco
     foreach ($pack in $chocoPackages) {
@@ -57,32 +60,14 @@ if ($chocoPackages -and $chocoPackages.Count -gt 0) {
 Write-Output "Update Environment Variables in the session"  | timestamp
 Update-SessionEnvironment
 Install-Fonts
-#install posh-git
 
-$poshGit = Get-InstalledModule -Name posh-git -ErrorAction SilentlyContinue
+$psModules = $packageConfig.powershellModule
 
-if ($null -eq $poshGit) {
-    Write-Output "Install posh-git"  | timestamp
-    Install-Module -Name posh-git -Repository PSGallery -Force
+foreach ($module in $psModules) {
+    Install-PSModule -PsModuleName $module
 }
 
-#install Az
 
-$azModule = Get-InstalledModule -Name Az -ErrorAction SilentlyContinue
-
-if ($null -eq $azModule) {
-    Write-Output "Install Az Module"  | timestamp
-    Install-Module -Name Az -Repository PSGallery -Force
-}
-
-#install PSReadLine
-
-$psReadLine = Get-InstalledModule -Name PSReadLine -ErrorAction SilentlyContinue
-
-if ($null -eq $psReadLine) {
-    Write-Output "Install PSReadLine"  | timestamp
-    Install-Module -Name PSReadLine -Repository PSGallery -Force
-}
 pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force}"
 #copy pwsh profile
 Write-Output "Copy ps profile"  | timestamp

@@ -3,7 +3,7 @@ This is PowerShell script to set up workstation with needed software
 1. Open PowerShell window in Administrator mode
 1. Goto the folder where the script copied to
 1. update choco-packages.json file to your need
-1. run (role can be dev, devops or tester)
+1. run (role can be dev, devops or qa)
     > powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role dev
 ## Configure Windows Terminal (Optional)
 Please following the article to config your windows terminal <br>
