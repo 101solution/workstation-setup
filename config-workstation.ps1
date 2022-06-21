@@ -64,7 +64,7 @@ Install-Fonts
 $psModules = $packageConfig.powershellModule
 
 foreach ($module in $psModules) {
-    Install-PSModule -PsModuleName $module
+    Install-PSModule -PsModuleName $module.name
 }
 
 
