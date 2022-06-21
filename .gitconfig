@@ -1,7 +1,6 @@
-[user]
-#    Please adapt and uncomment the following lines:
-	name = CShen-101Solution
-    email = chuishen@gmail.com
+# [user]
+# 	name = CShen-101Solution
+#   email = chuishen@gmail.com
 [diff]
     tool = vscode
 [difftool]
