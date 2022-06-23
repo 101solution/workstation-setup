@@ -88,6 +88,15 @@ Copy-Item "./rudolfs-light-cs.omp.json" -Destination $env:POSH_THEMES_PATH -Forc
 Write-Output "Copy git config"  | timestamp
 Copy-Item "./.gitconfig" -Destination $env:UserProfile -Force
 
+$terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+if(Test-Path -LiteralPath $terminalSettingFile){
+    $defaultSettings = Get-Content -LiteralPath "$PSScriptRoot\terminal-default-settings.json" | ConvertFrom-Json
+    $defaultSettings.backgroundImage = "$PSScriptRoot\backgroud\Chongming-China.png"
+    $terminalSettings = Get-Content -LiteralPath $terminalSettingFile | ConvertFrom-Json
+    $terminalSettings.profiles.defaults  = $defaultSettings
+    $terminalSettings | ConvertTo-Json -Depth 10 | Format-Json | Out-File $terminalSettingFile -Force -Encoding utf8
+}
+
 #Remove-WindowsTask -TaskName $taskName
 #install wsl
 if ($enableWSL) {
