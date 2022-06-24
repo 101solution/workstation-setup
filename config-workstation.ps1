@@ -28,7 +28,7 @@ filter timestamp { "$(Get-Date -Format o): $_" }
 #$argString = "-executionpolicy bypass -file .\config-workstation.ps1 -role $role"
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
 Write-Output "Register NuGet source ..."
-Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue
+Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue | Out-Null
 
 
 $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json

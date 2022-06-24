@@ -371,12 +371,7 @@ function Install-WingetPackage {
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageName..." | timestamp
-                if ($overrideParameters -ne "") {
-                    winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters"
-                }
-                else {
-                    winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements
-                }
+                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements
             }
             else {
                 Write-Output "    Latest version of $packageName... already installed" | timestamp
@@ -400,12 +395,7 @@ function Install-WingetPackage {
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageId..." | timestamp
-                if ($overrideParameters -ne "") {
-                    winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters"
-                }
-                else {
-                    winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements
-                }
+                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements
             }
             else {
                 Write-Output "    Latest version of $packageId... already installed" | timestamp
