@@ -16,18 +16,20 @@ param (
     [string]
     $defaultWorkFolder = "c:\projects"
 )
+filter timestamp { "$(Get-Date -Format o): $_" }
 $logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
-    New-Item -Path $logFilePath -ItemType File -Force
+    Write-Output "Create log file $logFilePath..." | timestamp
+    New-Item -Path $logFilePath -ItemType File -Force | Out-Null
 }
 $null = Start-Transcript $logFilePath -Append
-filter timestamp { "$(Get-Date -Format o): $_" }
 
+Write-Output "Loading helper script..." | timestamp
 . $PSScriptRoot\helper.ps1
 #$taskName = "workstation-config"
 #$argString = "-executionpolicy bypass -file .\config-workstation.ps1 -role $role"
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
-Write-Output "Register NuGet source ..."
+Write-Output "Register NuGet source ..." | timestamp
 Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue | Out-Null
 
 
@@ -80,12 +82,12 @@ foreach ($module in $psModules) {
 }
 
 
-pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force}"
+pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force}" | Out-Null
 #copy pwsh profile
 Write-Output "Copy ps profile"  | timestamp
 $psProfilePath = $PROFILE.CurrentUserAllHosts -Replace "WindowsPowerShell", "Powershell"
-Write-Output "Creating ps profile"  | timestamp
-New-Item -ItemType File -Path $psProfilePath -Force 
+Write-Output "Creating ps profile $psProfilePath"  | timestamp
+New-Item -ItemType File -Path $psProfilePath -Force | Out-Null
 Write-Output "unlock ps profile"  | timestamp
 
 Copy-Item "$PSScriptRoot/profile.ps1" -Destination $psProfilePath -Force
@@ -102,14 +104,16 @@ $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-
 
 
 #copy git config
-Write-Output "Copy git config"  | timestamp
+Write-Output "Copy git config..."  | timestamp
 Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
+Write-Output "Set Git User and Email..."  | timestamp
 git config --global user.name $gitUser
 git config --global user.email $gitEmail
 
 
 $terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 if (Test-Path -LiteralPath $terminalSettingFile) {
+    Write-Output "Update Windows Terminal Settings"  | timestamp
     $defaultSettings = Get-Content -LiteralPath "$PSScriptRoot\terminal-default-settings.json" | ConvertFrom-Json
     $defaultSettings.backgroundImage = "$PSScriptRoot\backgroud\Chongming-China.png"
     $defaultSettings.startingDirectory = $defaultWorkFolder
@@ -120,19 +124,19 @@ if (Test-Path -LiteralPath $terminalSettingFile) {
 #Remove-WindowsTask -TaskName $taskName
 #install wsl
 if ($enableWSL) {
-    Write-Output "Installing WSL ...."
+    Write-Output "Installing WSL ...." | timestamp
     $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if ($wslCmd) {
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
         $result = wsl -l -v
         if (($result.Count -ge 2) -and ($result[1].Contains("Ubuntu"))) {
-            Write-Output "wsl already configured"
+            Write-Output "wsl already configured" | timestamp
     
         }
         else {
-            Write-Output "Configuring WSL ..."
+            Write-Output "Configuring WSL ..." | timestamp
             wsl --install
-            Write-Output "Restarting computer to continue wsl install...."
+            Write-Output "Restarting computer to continue wsl install...." | timestamp
             $null = Stop-Transcript
             Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
             Restart-Computer -Force
@@ -140,11 +144,11 @@ if ($enableWSL) {
         
     }
     else {
-        Write-Warning "wsl.exe can't find, please fix it and try again  ...."
+        Write-Warning "wsl.exe can't find, please fix it and try again  ...." | timestamp
     }
 }
 else {
-    Write-Output "Skipping WSL install...."
+    Write-Output "Skipping WSL install...." | timestamp
 }
 $null = Stop-Transcript
 Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
