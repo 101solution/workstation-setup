@@ -16,7 +16,7 @@ param (
     [string]
     $defaultWorkFolder = "c:\works"
 )
-$logFilePath = "$PSScriptRoot\workstation-config.log"
+$logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
     New-Item -Path $logFilePath -ItemType File -Force
 }
