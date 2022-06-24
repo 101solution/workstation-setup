@@ -1,6 +1,3 @@
-# [user]
-# 	name = CShen-101Solution
-#   email = chuishen@gmail.com
 [diff]
     tool = vscode
 [difftool]

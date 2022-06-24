@@ -1,0 +1,91 @@
+**********************
+Windows PowerShell transcript start
+Start time: 20220624134306
+Username: ae-npe-dev-010\101sAdmin
+RunAs User: ae-npe-dev-010\101sAdmin
+Configuration Name: 
+Machine: ae-npe-dev-010 (Microsoft Windows NT 10.0.22000.0)
+Host Application: powershell.exe -executionpolicy bypass -file .\config-workstation.ps1
+Process ID: 1600
+PSVersion: 5.1.22000.653
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.22000.653
+BuildVersion: 10.0.22000.653
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Register NuGet source ...
+
+Name         : nugetRepository
+Location     : https://www.nuget.org/api/v2
+Source       : nugetRepository
+ProviderName : NuGet
+Provider     : Microsoft.PackageManagement.Implementation.PackageProvider
+IsTrusted    : False
+IsRegistered : True
+IsValidated  : True
+Details      : {}
+
+2022-06-24T13:43:12.3344720+08:00: Checking package Microsoft.DotNet.SDK.6... using WinGet
+2022-06-24T13:43:14.4282283+08:00:     Latest version of Microsoft.DotNet.SDK.6... already installed
+2022-06-24T13:43:14.4282283+08:00: Checking package Microsoft.PowerShell... using WinGet
+2022-06-24T13:43:15.9282087+08:00:     Latest version of Microsoft.PowerShell... already installed
+2022-06-24T13:43:15.9438717+08:00: Checking package Microsoft.AzureCLI... using WinGet
+2022-06-24T13:43:17.2251175+08:00:     Latest version of Microsoft.AzureCLI... already installed
+2022-06-24T13:43:17.2251175+08:00: Checking package Ditto.Ditto... using WinGet
+2022-06-24T13:43:18.5375976+08:00:     Latest version of Ditto.Ditto... already installed
+2022-06-24T13:43:18.5375976+08:00: Checking package Git.Git... using WinGet
+2022-06-24T13:43:19.8032354+08:00:     Latest version of Git.Git... already installed
+2022-06-24T13:43:19.8067582+08:00: Checking package GitHub.cli... using WinGet
+2022-06-24T13:43:21.0543586+08:00:     Latest version of GitHub.cli... already installed
+2022-06-24T13:43:21.0699783+08:00: Checking package Kubernetes.minikube... using WinGet
+2022-06-24T13:43:22.3660603+08:00:     Latest version of Kubernetes.minikube... already installed
+2022-06-24T13:43:22.3660603+08:00: Checking package Microsoft.VisualStudioCode... using WinGet
+2022-06-24T13:43:23.6560227+08:00:     Latest version of Microsoft.VisualStudioCode... already installed
+2022-06-24T13:43:23.6560227+08:00: Checking package Microsoft.WindowsTerminal... using WinGet
+2022-06-24T13:43:24.9044198+08:00:     Latest version of Microsoft.WindowsTerminal... already installed
+2022-06-24T13:43:24.9044198+08:00: Checking package Postman.Postman... using WinGet
+2022-06-24T13:43:26.5330811+08:00:     Latest version of Postman.Postman... already installed
+2022-06-24T13:43:26.5420774+08:00: Checking package JanDeDobbeleer.OhMyPosh... using WinGet
+2022-06-24T13:43:27.8864091+08:00:     Latest version of JanDeDobbeleer.OhMyPosh... already installed
+2022-06-24T13:43:27.8894068+08:00: Checking package Microsoft.VisualStudio.2022.Enterprise... using WinGet
+2022-06-24T13:43:29.1802326+08:00:     Upgarding package Microsoft.VisualStudio.2022.Enterprise...
+
+2022-06-24T13:43:40.5082604+08:00: Chocolatery has already installed, version is 1.1.0
+2022-06-24T13:43:40.5202621+08:00: Installing package kubernetes-cli...
+2022-06-24T13:43:43.0161620+08:00:     Package kubernetes-cli is already install with latest version
+2022-06-24T13:43:43.0181705+08:00: Installing package terraform...
+2022-06-24T13:43:45.3143200+08:00:     Package terraform is already install with latest version
+2022-06-24T13:43:45.3153132+08:00: Update Environment Variables in the session
+2022-06-24T13:43:45.4378029+08:00: Checking PS Module posh-git...
+2022-06-24T13:43:53.0723641+08:00:   Latest PS Module posh-git has been installed.
+2022-06-24T13:43:53.0733639+08:00: Checking PS Module Az...
+2022-06-24T13:44:00.3745619+08:00:   Latest PS Module Az has been installed.
+2022-06-24T13:44:00.3795579+08:00: Checking PS Module PSReadLine...
+2022-06-24T13:44:04.9113582+08:00:   Latest PS Module PSReadLine has been installed.
+2022-06-24T13:44:04.9127023+08:00: Checking PS Module PSRule...
+2022-06-24T13:44:10.7146315+08:00:   Latest PS Module PSRule has been installed.
+
+2022-06-24T13:44:12.6571005+08:00: Copy ps profile
+2022-06-24T13:44:12.6611100+08:00: Creating ps profile
+
+
+    Directory: C:\Users\101sAdmin\Documents\Powershell
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----        24/06/2022   1:44 PM              0 profile.ps1
+2022-06-24T13:44:12.6731095+08:00: unlock ps profile
+2022-06-24T13:44:12.6821077+08:00: Copy oh-my-posh theme
+2022-06-24T13:44:12.6961075+08:00: Copy git config
+
+
+Installing WSL ....
+wsl already configured
+**********************
+Windows PowerShell transcript end
+End time: 20220624134412
+**********************

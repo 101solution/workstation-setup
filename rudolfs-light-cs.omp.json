@@ -40,7 +40,7 @@
           "properties": {
             "style": "full",
             "mapped_locations": {
-              "C:\\projects": "~"
+              "#workFolder#": "~"
             }
           },
           "style": "plain",

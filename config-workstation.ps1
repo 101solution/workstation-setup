@@ -5,9 +5,18 @@ param (
     $role = "devops",
     [Parameter()]
     [boolean]
-    $enableWSL = $true
+    $enableWSL = $true,
+    [Parameter()]
+    [string]
+    $gitUser = "CShen_101Solution",
+    [Parameter()]
+    [string]
+    $gitEmail = "chuishen@gmail.com",
+    [Parameter()]
+    [string]
+    $defaultWorkFolder = "c:\works"
 )
-$logFilePath = "c:\temp\workstation-config.log"
+$logFilePath = "$PSScriptRoot\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
     New-Item -Path $logFilePath -ItemType File -Force
 }
@@ -27,6 +36,9 @@ $packageConfig = Get-Content .\packages-$role.json | ConvertFrom-Json
 $wingetPackages = $packageConfig.winget
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     Install-WinGetOffline
+    #call winget list as the first time it takes some time to load
+    winget list | Out-Null
+    Start-Sleep -Milliseconds 2000
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
             Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override
@@ -79,24 +91,32 @@ Write-Output "unlock ps profile"  | timestamp
 Copy-Item "./profile.ps1" -Destination $psProfilePath -Force
 Unblock-File -LiteralPath $psProfilePath
 
+if (-not (Test-Path -Path $defaultWorkFolder -PathType Container)) {
+    Write-Output "Create folder $defaultWorkFolder"  | timestamp
+    New-Item -Path $defaultWorkFolder -ItemType Directory -Force | Out-Null
+}
 #copy oh-my-posh theme
 Write-Output "Copy oh-my-posh theme"  | timestamp
-Copy-Item "./rudolfs-light-cs.omp.json" -Destination $env:POSH_THEMES_PATH -Force
+$poshContent = Get-Content "./rudolfs-light-cs.omp.json" -Encoding UTF8
+$poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-File -LiteralPath "$($env:POSH_THEMES_PATH)\rudolfs-light-cs.omp.json" -Encoding utf8 -Force
 
 
 #copy git config
 Write-Output "Copy git config"  | timestamp
 Copy-Item "./.gitconfig" -Destination $env:UserProfile -Force
+git config --global user.name $gitUser
+git config --global user.email $gitEmail
+
 
 $terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-if(Test-Path -LiteralPath $terminalSettingFile){
+if (Test-Path -LiteralPath $terminalSettingFile) {
     $defaultSettings = Get-Content -LiteralPath "$PSScriptRoot\terminal-default-settings.json" | ConvertFrom-Json
     $defaultSettings.backgroundImage = "$PSScriptRoot\backgroud\Chongming-China.png"
+    $defaultSettings.startingDirectory = $defaultWorkFolder
     $terminalSettings = Get-Content -LiteralPath $terminalSettingFile | ConvertFrom-Json
-    $terminalSettings.profiles.defaults  = $defaultSettings
+    $terminalSettings.profiles.defaults = $defaultSettings
     $terminalSettings | ConvertTo-Json -Depth 10 | Format-Json | Out-File $terminalSettingFile -Force -Encoding utf8
 }
-
 #Remove-WindowsTask -TaskName $taskName
 #install wsl
 if ($enableWSL) {
