@@ -14,7 +14,7 @@ param (
     $gitEmail = "chuishen@gmail.com",
     [Parameter()]
     [string]
-    $defaultWorkFolder = "c:\works"
+    $defaultWorkFolder = "c:\projects"
 )
 $logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
@@ -23,7 +23,7 @@ if (-not (Test-Path $logFilePath)) {
 $null = Start-Transcript $logFilePath -Append
 filter timestamp { "$(Get-Date -Format o): $_" }
 
-. .\helper.ps1
+. $PSScriptRoot\helper.ps1
 #$taskName = "workstation-config"
 #$argString = "-executionpolicy bypass -file .\config-workstation.ps1 -role $role"
 #New-WindowsTask -TaskName $taskName -WorkingDirectory $PSScriptRoot -PSCommand $argString
@@ -31,7 +31,7 @@ Write-Output "Register NuGet source ..."
 Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue
 
 
-$packageConfig = Get-Content .\packages-$role.json | ConvertFrom-Json
+$packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
 
 $wingetPackages = $packageConfig.winget
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
@@ -88,7 +88,7 @@ Write-Output "Creating ps profile"  | timestamp
 New-Item -ItemType File -Path $psProfilePath -Force 
 Write-Output "unlock ps profile"  | timestamp
 
-Copy-Item "./profile.ps1" -Destination $psProfilePath -Force
+Copy-Item "$PSScriptRoot/profile.ps1" -Destination $psProfilePath -Force
 Unblock-File -LiteralPath $psProfilePath
 
 if (-not (Test-Path -Path $defaultWorkFolder -PathType Container)) {
@@ -97,13 +97,13 @@ if (-not (Test-Path -Path $defaultWorkFolder -PathType Container)) {
 }
 #copy oh-my-posh theme
 Write-Output "Copy oh-my-posh theme"  | timestamp
-$poshContent = Get-Content "./rudolfs-light-cs.omp.json" -Encoding UTF8
+$poshContent = Get-Content "$PSScriptRoot/rudolfs-light-cs.omp.json" -Encoding UTF8
 $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-File -LiteralPath "$($env:POSH_THEMES_PATH)\rudolfs-light-cs.omp.json" -Encoding utf8 -Force
 
 
 #copy git config
 Write-Output "Copy git config"  | timestamp
-Copy-Item "./.gitconfig" -Destination $env:UserProfile -Force
+Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
 git config --global user.name $gitUser
 git config --global user.email $gitEmail
 
