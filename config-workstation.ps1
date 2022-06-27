@@ -32,14 +32,15 @@ Write-Output "Loading helper script..." | timestamp
 Write-Output "Register NuGet source ..." | timestamp
 Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue | Out-Null
 
-
+Write-Output "Getting package config ..." | timestamp
 $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
 
 $wingetPackages = $packageConfig.winget
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     Install-WinGetOffline
     #call winget list as the first time it takes some time to load
-    winget list | Out-Null
+    Write-Output "Run winget list ..." | timestamp
+    winget list --accept-source-agreements | Out-Null
     Start-Sleep -Milliseconds 2000
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
@@ -73,7 +74,7 @@ if ($chocoPackages -and $chocoPackages.Count -gt 0) {
 #Reload environment variables for the session
 Write-Output "Update Environment Variables in the session"  | timestamp
 Update-SessionEnvironment
-Install-Fonts
+Install-Fonts -fontFolder $PSScriptRoot
 
 $psModules = $packageConfig.powershellModule
 
@@ -127,6 +128,8 @@ if ($enableWSL) {
     Write-Output "Installing WSL ...." | timestamp
     $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if ($wslCmd) {
+        wsl --update
+        wsl --shutdown
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
         $result = wsl -l -v
         if (($result.Count -ge 2) -and ($result[1].Contains("Ubuntu"))) {
@@ -135,7 +138,7 @@ if ($enableWSL) {
         }
         else {
             Write-Output "Configuring WSL ..." | timestamp
-            wsl --install
+            wsl --install -d Ubuntu
             Write-Output "Restarting computer to continue wsl install...." | timestamp
             $null = Stop-Transcript
             Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
