@@ -4,6 +4,9 @@ param (
     [string]
     $role = "devops",
     [Parameter()]
+    [string]
+    $taskName = "",
+    [Parameter()]
     [boolean]
     $enableWSL = $true,
     [Parameter()]
@@ -128,8 +131,6 @@ if ($enableWSL) {
     Write-Output "Installing WSL ...." | timestamp
     $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if ($wslCmd) {
-        wsl --update
-        wsl --shutdown
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
         $result = wsl -l -v
         if (($result.Count -ge 2) -and ($result[1].Contains("Ubuntu"))) {
@@ -152,6 +153,9 @@ if ($enableWSL) {
 }
 else {
     Write-Output "Skipping WSL install...." | timestamp
+}
+if ($taskName -ne "") {
+    Remove-WindowsTask $taskName
 }
 $null = Stop-Transcript
 Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
