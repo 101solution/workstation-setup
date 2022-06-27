@@ -19,6 +19,7 @@ param (
     [string]
     $defaultWorkFolder = "c:\projects"
 )
+$restartComputer = $false
 filter timestamp { "$(Get-Date -Format o): $_" }
 $logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
@@ -141,9 +142,7 @@ if ($enableWSL) {
             Write-Output "Configuring WSL ..." | timestamp
             wsl --install -d Ubuntu
             Write-Output "Restarting computer to continue wsl install...." | timestamp
-            $null = Stop-Transcript
-            Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
-            Restart-Computer -Force
+            $restartComputer = $true
         }
         
     }
@@ -159,3 +158,6 @@ if ($taskName -ne "") {
 }
 $null = Stop-Transcript
 Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
+if($restartComputer){
+    Restart-Computer -Force
+}
