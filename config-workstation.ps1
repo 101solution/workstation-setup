@@ -117,6 +117,12 @@ git config --global user.email $gitEmail
 
 
 $terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
+    # if terminal never run, the settings file will not exist, so need to force it to create by running wt.exe
+    Start-Process -FilePath "wt.exe" -ArgumentList "-h"
+    Get-Process -Name "WindowsTerminal" | Stop-Process
+}
+
 if (Test-Path -LiteralPath $terminalSettingFile) {
     Write-Output "Update Windows Terminal Settings"  | timestamp
     $defaultSettings = Get-Content -LiteralPath "$PSScriptRoot\terminal-default-settings.json" | ConvertFrom-Json
