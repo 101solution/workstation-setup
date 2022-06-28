@@ -118,9 +118,11 @@ git config --global user.email $gitEmail
 
 $terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
+    Write-Output "Settings file not created yet, open Windows Ternimal to force it created..."  | timestamp
     # if terminal never run, the settings file will not exist, so need to force it to create by running wt.exe
     Start-Process -FilePath "wt.exe" -ArgumentList "-h"
-    Get-Process -Name "WindowsTerminal" | Stop-Process
+    Start-Sleep -Milliseconds 800
+    Get-Process -Name "WindowsTerminal" -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
 }
 
 if (Test-Path -LiteralPath $terminalSettingFile) {
