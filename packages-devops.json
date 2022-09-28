@@ -40,7 +40,13 @@
     },
     {
       "id": "JanDeDobbeleer.OhMyPosh"
-     }
+    },
+    {
+      "id": "Amazon.AWSCLI"
+    },
+    {
+      "id": "Amazon.SAM-CLI"
+    }
   ],
   "powershellModule": [
     {
