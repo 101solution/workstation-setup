@@ -2,7 +2,7 @@ $configPath = "c:\config"
 if (Test-Path -Path "$configPath" -PathType Container) {
     Write-Output "$configPath exists"
 }
-else{
+else {
     New-Item -Path $configPath -ItemType Directory -Force
 }
 Write-Output "Download latest workstaion config from github..."
