@@ -46,6 +46,9 @@
     },
     {
       "id": "Amazon.SAM-CLI"
+    },
+    {
+      "id": "Adobe.Acrobat.Reader.64-bit"
     }
   ],
   "powershellModule": [
