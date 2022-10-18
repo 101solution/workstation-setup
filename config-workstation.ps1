@@ -9,6 +9,8 @@ param (
     [Parameter()]
     [boolean]
     $enableWSL = $true,
+    [boolean]
+    $installStax2AWS = $true,
     [Parameter()]
     [string]
     $gitUser = "CShen_101Solution",

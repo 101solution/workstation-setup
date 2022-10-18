@@ -455,6 +455,27 @@ Function Install-Kubectl {
     }
 
 }
+Function Install-Stax2AWS-CLI {
+    param (
+        [Parameter()]
+        [string]
+        $InstallPath
+    )
+    if (-not(Test-Path $InstallPath)) {
+        New-Item -Path $InstallPath -ItemType Directory -Force
+    }
+    Write-Output "Download latest workstaion config from github..."
+    $githubRepoUrl = "https://api.github.com/repos/stax-labs/stax2aws-releases/releases"
+    $releases = Invoke-RestMethod -Uri $githubRepoUrl -ErrorAction SilentlyContinue
+    $latestVersion = ($releases | Select-Object -first 1).assets.Where({ $_.browser_download_url.Contains("windows_amd64") }).browser_download_url
+    $fileName = ([uri]$latestVersion).Segments[-1]
+    Invoke-RestMethod -Uri $latestVersion -OutFile "$InstallPath\$fileName"
+    #Using .Net class System.IO.Compression.ZipFile
+    Add-Type -Assembly "System.IO.Compression.Filesystem"
+    [System.IO.Compression.ZipFile]::ExtractToDirectory("$InstallPath\$fileName", "$InstallPath")
+    Update-EnvironmentPath -NewPath $InstallPath
+    Update-SessionEnvironment
+}
 Function Install-PSModule {
     [CmdletBinding()]
     param (
