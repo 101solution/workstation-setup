@@ -8,7 +8,7 @@ This is PowerShell script to set up workstation with needed software
 
 ## Automate Download and run latest release
 To download the latets release and run the script using defaulr Role (cloudEngineer), you can save the following file to local as and run in pwoershell/cmd
-https://github.com/101solution/workstation-setup/blob/main/get-latestPackages.ps1 or copy paster the scripts below and save it on your local disk as get-latestPackages.ps1
+[https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1]PowerShell-get-latestPackages.ps1 Script or copy paster the scripts below and save it on your local disk as get-latestPackages.ps1
 
 ```
 $configPath = "c:\config"
