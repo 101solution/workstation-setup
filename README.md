@@ -3,50 +3,39 @@ This is PowerShell script to set up workstation with needed software
 1. Open PowerShell window in Administrator mode
 1. Goto the folder where the script copied to
 1. update choco-packages.json file to your need
-1. run (role can be dev, devops or qa)
+1. run (role can be dev, cloudEngineer or qa, default role is cloudEngineer)
     > powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role dev
-## Configure Windows Terminal (Optional)
-Please following the article to config your windows terminal <br>
-[Windows Terminal PowerShell Prompt](https://www.hanselman.com/blog/my-ultimate-powershell-prompt-with-oh-my-posh-and-the-windows-terminal)
-## Configure powershell history (Optional)
-Please follow the article below to configure powershell command history <br/>
-[Powershell PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
 
-## How to update Powershell Profile (Optional)
-The easy way is run the following command, it will open the default profile
-> code $PROFILE
-
-an example of profile is as below
+## Automate Download and run latest release
+To download the latets release and run the script using defaulr Role (cloudEngineer), you can save the following file to local as and run in pwoershell/cmd
+https://github.com/101solution/workstation-setup/blob/main/get-latestPackages.ps1 or copy paster the scripts below and save it on your local disk as get-latestPackages.ps1
 
 ```
-# Set and force overwrite of the $HOME variable
-Set-Variable HOME "C:\Repos\" -Force
-
-# Set the "~" shortcut value for the FileSystem provider
-(get-psprovider 'FileSystem').Home = "C:\Repos\"
-Import-Module Posh-Git
-Import-Module oh-my-posh
-Set-PoshPrompt -Theme rudolfs-light # choose your prefer theme https://ohmyposh.dev/docs/themes
-
-Import-Module PSReadLine
-
-# Shows navigable menu of all options when hitting Tab
-Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-
-# Autocompleteion for Arrow keys
-Set-PSReadLineOption -HistorySearchCursorMovesToEnd
-Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
-Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
-
-Set-PSReadLineOption -ShowToolTips
-Set-PSReadLineOption -PredictionSource History
-
-# PowerShell parameter completion shim for the dotnet CLI
-Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
-    param($commandName, $wordToComplete, $cursorPosition)
-        dotnet complete --position $cursorPosition "$wordToComplete" | ForEach-Object {
-           [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-        }
+$configPath = "c:\config"
+if (Test-Path -Path "$configPath" -PathType Container) {
+    Write-Output "$configPath exists"
 }
+else {
+    New-Item -Path $configPath -ItemType Directory -Force
+}
+Write-Output "Download latest workstaion config from github..."
+$githubRepoUrl = "https://api.github.com/repos/101solution/workstation-setup/tags"
+$tags = Invoke-RestMethod -Uri $githubRepoUrl -ErrorAction SilentlyContinue
+$zipUrl = ($tags | Select-Object -first 1).zipball_url
+Invoke-RestMethod -Uri $zipUrl -OutFile "$configPath\workstation.zip"
+#Using .Net class System.IO.Compression.ZipFile
+Add-Type -Assembly "System.IO.Compression.Filesystem"
+[System.IO.Compression.ZipFile]::ExtractToDirectory("$configPath\workstation.zip", "$configPath")
+if (Test-Path -Path "$configPath\workstation" -PathType Container) {
+    Remove-Item -Path "$configPath\workstation" -Recurse -Force
+}
+Get-Item -Path "$configPath\101solution-workstation-*" | Rename-item -NewName "workstation"
+Remove-Item -Path "$configPath\workstation.zip" -Force
+Write-Output "Start workstation configuration..."
+powershell.exe -executionpolicy bypass -file $configPath\workstation\config-workstation.ps1
+```
+Then run 
 
+```
+powershell.exe -executionpolicy bypass -file .\get-latestPackages.ps11
 ```
