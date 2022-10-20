@@ -36,6 +36,5 @@ powershell.exe -executionpolicy bypass -file $configPath\workstation\config-work
 ```
 Then run 
 
-```
-powershell.exe -executionpolicy bypass -file .\get-latestPackages.ps11
-```
+> powershell.exe -executionpolicy bypass -file .\get-latestPackages.ps11
+
