@@ -11,6 +11,8 @@ param (
     $enableWSL = $true,
     [boolean]
     $installStax2AWS = $true,
+    [boolean]
+    $installDocker = $true,
     [Parameter()]
     [string]
     $gitUser = "CShen_101Solution",
@@ -73,9 +75,9 @@ if ($chocoPackages -and $chocoPackages.Count -gt 0) {
     }
 }
 
-# $userToolsPath = "$env:UserProfile\tools"
+$userToolsPath = "$env:UserProfile\tools"
 
-# Install-Kubectl -InstallPath $userToolsPath
+Install-Kubectl -InstallPath $userToolsPath
 
 #Reload environment variables for the session
 Write-Output "Update Environment Variables in the session"  | timestamp
@@ -88,6 +90,12 @@ foreach ($module in $psModules) {
     Install-PSModule -PsModuleName $module.name
 }
 
+if($installStax2AWS){
+    Install-Stax2AWS-CLI -InstallPath $userToolsPath
+}
+if($installDocker){
+    Install-DockerEngine -InstallPath $userToolsPath
+}
 
 pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force}" | Out-Null
 #copy pwsh profile

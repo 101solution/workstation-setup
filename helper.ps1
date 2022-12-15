@@ -455,6 +455,35 @@ Function Install-Kubectl {
     }
 
 }
+Function Install-DockerEngine {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [string]
+        $InstallPath
+    )
+    if (-not(Test-Path $InstallPath)) {
+        New-Item -Path $InstallPath -ItemType Directory -Force
+    }
+    $dockerexe = Get-Command -Name docker.exe -ErrorAction SilentlyContinue
+    if (-not(Test-Path $InstallPath)) {
+        New-Item -Path $InstallPath -ItemType Directory -Force
+    }
+    $latestVersion = Invoke-WebRequest -Uri "https://dl.k8s.io/release/stable.txt"
+    $installedVersion = "0.0.0.0"
+    if (-not $dockerexe) {
+        $Version="20.10.21"
+        curl.exe -L https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip -o docker.zip
+        Expand-Archive docker.zip -DestinationPath $InstallPath
+    }
+    Update-EnvironmentPath -NewPath "$InstallPath\Docker"
+    Update-SessionEnvironment
+    $dockerexe = Get-Command -Name docker.exe -ErrorAction SilentlyContinue
+    if($dockerexe){
+        dockerd.exe --register-service
+        Start-Service docker
+    }
+}
 Function Install-Stax2AWS-CLI {
     param (
         [Parameter()]
