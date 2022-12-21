@@ -1,0 +1,25 @@
+{
+  "chocolatey": [
+    {
+      "name": "terraform"
+    },
+    {
+      "name": "dotnet-sdk"
+    },
+    {
+      "name": "pwsh"
+    },
+    {
+      "name": "azure-cli"
+    },
+    {
+      "name": "git"
+    }
+  ],
+  "winget": [  ],
+  "powershellModule": [
+    {
+      "name": "Az"
+    }
+  ]
+}
