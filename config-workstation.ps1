@@ -10,9 +10,9 @@ param (
     [boolean]
     $enableWSL = $true,
     [boolean]
-    $installStax2AWS = $true,
+    $installStax2AWS = $false,
     [boolean]
-    $installDocker = $true,
+    $installDocker = $false,
     [Parameter()]
     [string]
     $gitUser = "CShen_101Solution",
@@ -52,10 +52,10 @@ if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     Start-Sleep -Milliseconds 2000
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
-            Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override
+            Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override -source $pack.source
         }
         else {
-            Install-WinGetPackage -packageName $pack.name -packageId $pack.id
+            Install-WinGetPackage -packageName $pack.name -packageId $pack.id -source $pack.source
         }
     }
 }
@@ -65,19 +65,10 @@ if ($chocoPackages -and $chocoPackages.Count -gt 0) {
     Install-Choco
     foreach ($pack in $chocoPackages) {
         Install-ChocoPackage -packageName $pack.name -additionalParameters $pack.additionalParameters
-        #Write-Output "Check if computer need restart..."  | timestamp
-        #$needRestart = Test-VMRestart
-        #if ($needRestart) {
-        #    Write-Output "Restarting Computer"  | timestamp
-        #    $null = Stop-Transcript
-        #    Restart-Computer -Force
-        #}
     }
 }
 
 $userToolsPath = "$env:UserProfile\tools"
-
-Install-Kubectl -InstallPath $userToolsPath
 
 #Reload environment variables for the session
 Write-Output "Update Environment Variables in the session"  | timestamp

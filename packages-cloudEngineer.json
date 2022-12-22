@@ -9,50 +9,65 @@
   ],
   "winget": [
     {
-      "id": "Microsoft.DotNet.SDK.6"
+      "id": "Microsoft.DotNet.SDK.7",
+      "source": "winget"
     },
     {
-      "id": "Microsoft.PowerShell"
+      "id": "Microsoft.PowerShell",
+      "source": "winget"
     },
     {
-      "id": "Microsoft.AzureCLI"
+      "id": "Microsoft.AzureCLI",
+      "source": "winget"
     },
     {
-      "id": "Ditto.Ditto"
+      "id": "Ditto.Ditto",
+      "source": "winget"
     },
     {
-      "id": "Git.Git"
+      "id": "Git.Git",
+      "source": "winget"
     },
     {
-      "id": "GitHub.cli"
+      "id": "GitHub.cli",
+      "source": "winget"
     },
     {
-      "id": "Kubernetes.minikube"
+      "id": "Kubernetes.minikube",
+      "source": "winget"
     },
     {
-      "id": "Microsoft.VisualStudioCode"
+      "id": "Microsoft.VisualStudioCode",
+      "source": "winget"
     },
     {
-      "id": "Microsoft.WindowsTerminal"
+      "id": "Postman.Postman",
+      "source": "winget"
     },
     {
-      "id": "Postman.Postman"
+      "id": "JanDeDobbeleer.OhMyPosh",
+      "source": "winget"
     },
     {
-      "id": "JanDeDobbeleer.OhMyPosh"
+      "id": "Amazon.AWSCLI",
+      "source": "winget"
     },
     {
-      "id": "Amazon.AWSCLI"
+      "id": "Docker.DockerDesktop",
+      "source": "winget"
     },
     {
-      "id": "Amazon.SAM-CLI"
+      "id": "Adobe.Acrobat.Reader.64-bit",
+      "source": "winget"
     },
     {
-      "id": "Adobe.Acrobat.Reader.64-bit"
+      "id": "Microsoft.VisualStudio.2022.Community",
+      "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb",
+      "source": "winget"
     },
     {
-      "id": "Microsoft.VisualStudio.2022.Professional",
-      "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb"
+      "name": "Windows Terminal",
+      "source": "msstore"
     }
   ],
   "powershellModule": [

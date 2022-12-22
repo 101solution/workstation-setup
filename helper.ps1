@@ -352,26 +352,27 @@ function Install-WingetPackage {
     param (
         [string] $packageName,
         [string] $packageId,
-        [string] $overrideParameters = ""
+        [string] $overrideParameters = "",
+        [string] $source = "winget"
     )
     if (($null -ne $packageName) -and ($packageName -ne '')) {
         Write-Output "Checking package $packageName... using WinGet" | timestamp
 
-        $outputRaw = winget list -e --name $packageName --accept-source-agreements
+        $outputRaw = winget list -e --name $packageName --accept-source-agreements --source $source
         $output = Convert-WingetOutput $outputRaw
         if ($null -eq $output) {
             Write-Output "    Installing package $packageName..." | timestamp
             if ($overrideParameters -ne "") {
-                winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters"
+                winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters" --source $source
             }
             else {
-                winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements
+                winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements --source $source
             }
         }
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageName..." | timestamp
-                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements
+                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements --source $source
             }
             else {
                 Write-Output "    Latest version of $packageName... already installed" | timestamp
@@ -381,21 +382,21 @@ function Install-WingetPackage {
     else {
         Write-Output "Checking package $packageId... using WinGet" | timestamp
 
-        $outputRaw = winget list -e --id $packageId --accept-source-agreements
+        $outputRaw = winget list -e --id $packageId --accept-source-agreements --source $source
         $output = Convert-WingetOutput $outputRaw
         if ($null -eq $output) {
             Write-Output "    Installing package $packageId..." | timestamp
             if ($overrideParameters -ne "") {
-                winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters"
+                winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters" --source $source
             }
             else {
-                winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements
+                winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
             }
         }
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageId..." | timestamp
-                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements
+                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
             }
             else {
                 Write-Output "    Latest version of $packageId... already installed" | timestamp
@@ -469,8 +470,6 @@ Function Install-DockerEngine {
     if (-not(Test-Path $InstallPath)) {
         New-Item -Path $InstallPath -ItemType Directory -Force
     }
-    $latestVersion = Invoke-WebRequest -Uri "https://dl.k8s.io/release/stable.txt"
-    $installedVersion = "0.0.0.0"
     if (-not $dockerexe) {
         $Version="20.10.21"
         curl.exe -L https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip -o docker.zip
