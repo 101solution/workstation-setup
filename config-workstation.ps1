@@ -45,7 +45,7 @@ $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Jso
 
 $wingetPackages = $packageConfig.winget
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
-    Install-WinGetOffline
+    Install-WinGet
     #call winget list as the first time it takes some time to load
     Write-Output "Run winget list ..." | timestamp
     winget list --accept-source-agreements | Out-Null
