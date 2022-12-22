@@ -66,8 +66,9 @@
       "source": "winget"
     },
     {
-      "name": "Windows Terminal",
-      "source": "msstore"
+      "id": "9N0DX20HK701",
+      "source": "msstore",
+      "comments": "Windows Terminal from MS Store"
     }
   ],
   "powershellModule": [
