@@ -66,10 +66,14 @@
       "source": "winget"
     },
     {
-      "id": "9N0DX20HK701",
-      "source": "msstore",
-      "comments": "Windows Terminal from MS Store"
+      "id": "Microsoft.WindowsTerminal",
+      "source": "winget"
     }
+    // {
+    //   "id": "9N0DX20HK701",
+    //   "source": "msstore",
+    //   "comments": "Windows Terminal from MS Store"
+    // }
   ],
   "powershellModule": [
     {
