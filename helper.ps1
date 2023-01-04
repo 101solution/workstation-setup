@@ -327,16 +327,15 @@ function Convert-WingetOutput {
         $packageId
     )
     if ($wingetOutput -and ($wingetOutput.Count -ge 3)) {
-        $idIndex = $wingetOutput[2].IndexOf("Id")
-        write-output "here - $wingetOutput[4] - $packageId"
+        $idIndex = $wingetOutput[1].IndexOf("Id")
         $appIndex = $wingetOutput[3].IndexOf($packageId)
         if ($idIndex -ge 0 -and $appIndex -ge 0) {
-            $header = $wingetOutput[2].Substring($idIndex) -replace '\s+', ","
+            $header = $wingetOutput[1].Substring($idIndex) -replace '\s+', ","
             $data = $wingetOutput[3].Substring($appIndex) -replace '\s+', ","
             return  @($header, $data) | ConvertFrom-Csv
         }
 
-    }
+    }$idIndex
     else {
         return $null
     }
