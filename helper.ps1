@@ -253,64 +253,56 @@ Function Install-WinGet {
         [Parameter(HelpMessage = "Display the AppxPackage after installation.")]
         [switch]$Passthru
     )
+    Write-Output "  Checking if winget installed..." | timestamp
+    $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
+    $waitCount = 0
+    while ((-not $wingetCmd) -or ($waitCount -lt 10) ) {
+        Write-Output "  Winget is not installed yet, start waiting..." | timestamp
+        Start-Sleep -Seconds 60
+        $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
+    }
     $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
     if (-not $wingetCmd) {
-        Write-Verbose "[$((Get-Date).TimeofDay)] Starting Install winget"
+        Write-Output "  Winget is not installed after 10 min, install now..." | timestamp
 
         if ($Iscoreclr -AND ($PSVersionTable.PSVersion -le 7.2)) {
             Write-Warning "If running this command in PowerShell 7, you need at least version 7.2."
             return
         }
-        if (-not( Get-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -ErrorAction SilentlyContinue)) {
-            Install-Package Microsoft.UI.Xaml -RequiredVersion 2.7.0 -Force
-        }
-        #test for requirement
-        $requirement = Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop
+        $vclibPackage = Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop
 
-        if (-Not $requirement) {
-            Write-Verbose "Installing Desktop App requirement"
+        if (-Not $vclibPackage) {
+            Write-Output "  Installing required package Microsoft.VCLibs.140.00.UWPDesktop..." | timestamp
             Try {
-                $vclib = Join-Path -Path $env:temp -ChildPath "Microsoft.VCLibs.x64.14.00.Desktop.appx"
-                Invoke-WebRequest -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -UseBasicParsing -OutFile $vclib -ErrorAction stop
-                if (Test-Path $vclib) {
-                    Add-AppxPackage -Path $vclib -ErrorAction Stop
+                Add-AppxPackage -Path https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx -ErrorAction Stop
+            }
+            Catch {
+                Throw $_
+            }
+        }
+        $uixmlPackage = Get-AppPackage Microsoft.UI.Xaml.2.7
+
+        if (-Not $uixmlPackage) {
+            Write-Output "  Installing required package Microsoft.UI.Xaml.2.7..." | timestamp
+            Try {
+                Save-Package -Name Microsoft.UI.Xaml -RequiredVersion 2.7.3 -Path $env:temp
+                Expand-Archive "$env:temp\Microsoft.UI.Xaml.2.7.3.nupkg" -Path "$env:temp\Microsoft.UI.Xaml\"
+                $uixml = Join-Path -Path "$env:temp\Microsoft.UI.Xaml\tools\AppX\x64\Release\" -ChildPath "Microsoft.VCLibs.x64.14.00.Desktop.appx"
+                if (Test-Path $uixml) {
+                    Add-AppxPackage -Path $uixml -ErrorAction Stop
                 }
                 else {
-                    Throw "Failed to find $vclib"
+                    Throw "Failed to find $uixml"
                 }
             }
             Catch {
                 Throw $_
             }
         }
-
-        $uri = "https://api.github.com/repos/microsoft/winget-cli/releases"
-
         Try {
-            Write-Verbose "[$((Get-Date).TimeofDay)] Getting information from $uri"
-            $get = Invoke-RestMethod -Uri $uri -Method Get -ErrorAction stop
-            if ($preview) {
-                Write-Verbose "[$((Get-Date).TimeofDay)] Getting latest preview release"
-                $data = ($get | where-object { $_.Prerelease } | Select-Object -first 1).Assets | Where-Object name -Match 'msixbundle'
-            }
-            else {
-                Write-Verbose "[$((Get-Date).TimeofDay)] Getting latest stable release"
-                $data = ($get | where-object { -Not $_.Prerelease } | Select-Object -first 1).Assets | Where-Object name -Match 'msixbundle'
-
-            }
-            #$data = $get | Select-Object -first 1
-
-            $appx = $data.browser_download_url
-            #$data.assets[0].browser_download_url
-            Write-Verbose "[$((Get-Date).TimeofDay)] $appx"
             If ($pscmdlet.ShouldProcess($appx, "Downloading asset")) {
-                $file = Join-Path -Path $env:temp -ChildPath $data.name
-
-                Write-Verbose "[$((Get-Date).TimeofDay)] Saving to $file"
-                Invoke-WebRequest -Uri $appx -UseBasicParsing -DisableKeepAlive -OutFile $file
-
-                Write-Verbose "[$((Get-Date).TimeofDay)] Adding Appx Package"
-                Add-AppxPackage -Path $file -ErrorAction Stop
+                Write-Output "  Installing winget cli..." | timestamp
+                Add-AppxPackage -Path https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle -ErrorAction Stop
 
                 if ($passthru) {
                     Get-AppxPackage microsoft.desktopAppInstaller
