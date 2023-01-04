@@ -334,8 +334,7 @@ function Convert-WingetOutput {
             $data = $wingetOutput[3].Substring($appIndex) -replace '\s+', ","
             return  @($header, $data) | ConvertFrom-Csv
         }
-
-    }$idIndex
+    }
     else {
         return $null
     }
