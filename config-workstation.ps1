@@ -146,7 +146,7 @@ if ($enableWSL) {
         $result = wsl -l -v
         [console]::OutputEncoding = $console
         $plaintText = $result -join " "
-        if (($result.Count -ge 2) -and ($plaintText.Contains("Ubuntu"))) {
+        if (($result.Count -ge 2) -and $plaintText.Contains("Ubuntu") -and $plaintText.Contains("STATE")) {
             Write-Output "wsl already configured" | timestamp
         }
         else {
