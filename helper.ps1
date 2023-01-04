@@ -350,6 +350,8 @@ function Install-WingetPackage {
         Write-Output "Checking package $packageId... using WinGet" | timestamp
 
         $outputRaw = winget list -e --id $packageId --accept-source-agreements --source $source
+        Start-Sleep -Milliseconds 150
+        $outputRaw = winget list -e --id $packageId --accept-source-agreements --source $source
         $output = Convert-WingetOutput -wingetOutput $outputRaw -packageId $packageId
         if ($null -eq $output) {
             Write-Output "    Installing package $packageId..." | timestamp
