@@ -52,10 +52,10 @@ if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     Start-Sleep -Milliseconds 2000
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
-            Install-WinGetPackage -packageName $pack.name -packageId $pack.id -overrideParameters $pack.override -source $pack.source
+            Install-WinGetPackage -packageId $pack.id -overrideParameters $pack.override -source $pack.source
         }
         else {
-            Install-WinGetPackage -packageName $pack.name -packageId $pack.id -source $pack.source
+            Install-WinGetPackage -packageId $pack.id -source $pack.source
         }
     }
 }
@@ -141,11 +141,13 @@ if ($enableWSL) {
     Write-Output "Installing WSL ...." | timestamp
     $wslCmd = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if ($wslCmd) {
+        $console = ([console]::OutputEncoding)
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
         $result = wsl -l -v
-        if (($result.Count -ge 2) -and ($result[1].Contains("Ubuntu"))) {
+        [console]::OutputEncoding = $console
+        $plaintText = $result -join " "
+        if (($result.Count -ge 2) -and ($plaintText.Contains("Ubuntu"))) {
             Write-Output "wsl already configured" | timestamp
-    
         }
         else {
             Write-Output "Configuring WSL ..." | timestamp

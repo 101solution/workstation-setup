@@ -255,23 +255,14 @@ Function Install-WinGet {
     )
     Write-Output "  Checking if winget installed..." | timestamp
     $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-    $waitCount = 0
-    while ((-not $wingetCmd) -or ($waitCount -lt 10) ) {
-        Write-Output "  Winget is not installed yet, start waiting..." | timestamp
-        Start-Sleep -Seconds 60
-        $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-    }
-    $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
     if (-not $wingetCmd) {
-        Write-Output "  Winget is not installed after 10 min, install now..." | timestamp
+        Write-Output "  Winget is not installed, install now..." | timestamp
 
         if ($Iscoreclr -AND ($PSVersionTable.PSVersion -le 7.2)) {
             Write-Warning "If running this command in PowerShell 7, you need at least version 7.2."
             return
         }
-        $vclibPackage = Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop
 
-        if (-Not $vclibPackage) {
             Write-Output "  Installing required package Microsoft.VCLibs.140.00.UWPDesktop..." | timestamp
             Try {
                 Add-AppxPackage -Path https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx -ErrorAction Stop
@@ -279,26 +270,35 @@ Function Install-WinGet {
             Catch {
                 Throw $_
             }
-        }
-        $uixmlPackage = Get-AppPackage Microsoft.UI.Xaml.2.7
-
-        if (-Not $uixmlPackage) {
+        
             Write-Output "  Installing required package Microsoft.UI.Xaml.2.7..." | timestamp
-            Try {
-                Save-Package -Name Microsoft.UI.Xaml -RequiredVersion 2.7.3 -Path $env:temp
-                Expand-Archive "$env:temp\Microsoft.UI.Xaml.2.7.3.nupkg" -Path "$env:temp\Microsoft.UI.Xaml\"
-                $uixml = Join-Path -Path "$env:temp\Microsoft.UI.Xaml\tools\AppX\x64\Release\" -ChildPath "Microsoft.VCLibs.x64.14.00.Desktop.appx"
+	        $nugetPath = "$env:temp\Microsoft.UI.Xaml.2.7.3.nupkg"
+            try {
+		        if (-not (Test-Path $nugetPath )) {
+			        Write-Output "    Downloading Nuget Package Microsoft.UI.Xaml..." | timestamp
+			        Save-Package -Name Microsoft.UI.Xaml -RequiredVersion 2.7.3 -Path $env:temp
+		        }
+                Write-Output "    Extracting Nuget Package Microsoft.UI.Xaml..." | timestamp
+                Rename-Item -Path $nugetPath -NewName "Microsoft.UI.Xaml.2.7.3.zip" -Force
+ 		        Expand-Archive -Path "$env:temp\Microsoft.UI.Xaml.2.7.3.zip" -DestinationPath "$env:temp\Microsoft.UI.Xaml\"
+                
+                $uixml = Join-Path -Path "$env:temp\Microsoft.UI.Xaml\tools\AppX\x64\Release\" -ChildPath "Microsoft.UI.Xaml.2.7.appx"
                 if (Test-Path $uixml) {
+		            Write-Output "    Installing package Microsoft.UI.Xaml.2.7..." | timestamp
                     Add-AppxPackage -Path $uixml -ErrorAction Stop
                 }
                 else {
                     Throw "Failed to find $uixml"
                 }
             }
-            Catch {
+            catch {
                 Throw $_
             }
-        }
+            finally {
+                Remove-Item -LiteralPath "$env:temp\Microsoft.UI.Xaml.2.7.3.zip" -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath "$env:temp\Microsoft.UI.Xaml" -Force -Recurse -ErrorAction SilentlyContinue
+            }
+
         Try {
             If ($pscmdlet.ShouldProcess($appx, "Downloading asset")) {
                 Write-Output "  Installing winget cli..." | timestamp
@@ -326,12 +326,13 @@ function Convert-WingetOutput {
         [string]
         $packageId
     )
-    if ($wingetOutput -and ($wingetOutput.Count -ge 4)) {
+    if ($wingetOutput -and ($wingetOutput.Count -ge 3)) {
         $idIndex = $wingetOutput[2].IndexOf("Id")
-        $appIndex = $wingetOutput[4].IndexOf($packageId)
+        write-output "here - $wingetOutput[4] - $packageId"
+        $appIndex = $wingetOutput[3].IndexOf($packageId)
         if ($idIndex -ge 0 -and $appIndex -ge 0) {
             $header = $wingetOutput[2].Substring($idIndex) -replace '\s+', ","
-            $data = $wingetOutput[4].Substring($appIndex) -replace '\s+', ","
+            $data = $wingetOutput[3].Substring($appIndex) -replace '\s+', ","
             return  @($header, $data) | ConvertFrom-Csv
         }
 
@@ -342,40 +343,15 @@ function Convert-WingetOutput {
 }
 function Install-WingetPackage {
     param (
-        [string] $packageName,
         [string] $packageId,
         [string] $overrideParameters = "",
         [string] $source = "winget"
     )
-    if (($null -ne $packageName) -and ($packageName -ne '')) {
-        Write-Output "Checking package $packageName... using WinGet" | timestamp
-
-        $outputRaw = winget list -e --name $packageName --accept-source-agreements --source $source
-        $output = Convert-WingetOutput $outputRaw
-        if ($null -eq $output) {
-            Write-Output "    Installing package $packageName..." | timestamp
-            if ($overrideParameters -ne "") {
-                winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters" --source $source
-            }
-            else {
-                winget install -e --name $packageName -h --accept-package-agreements --accept-source-agreements --source $source
-            }
-        }
-        else {
-            if (($null -ne $output.Available) -and ($output.Available -ne "")) {
-                Write-Output "    Upgarding package $packageName..." | timestamp
-                winget upgrade -e --name $packageName -h --accept-package-agreements --accept-source-agreements --source $source
-            }
-            else {
-                Write-Output "    Latest version of $packageName... already installed" | timestamp
-            }
-        }
-    }
-    else {
+    
         Write-Output "Checking package $packageId... using WinGet" | timestamp
 
         $outputRaw = winget list -e --id $packageId --accept-source-agreements --source $source
-        $output = Convert-WingetOutput $outputRaw
+        $output = Convert-WingetOutput -wingetOutput $outputRaw -packageId $packageId
         if ($null -eq $output) {
             Write-Output "    Installing package $packageId..." | timestamp
             if ($overrideParameters -ne "") {
@@ -394,7 +370,6 @@ function Install-WingetPackage {
                 Write-Output "    Latest version of $packageId... already installed" | timestamp
             }
         }
-    }
 }
 
 Function Update-EnvironmentPath {
