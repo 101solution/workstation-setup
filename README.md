@@ -42,3 +42,6 @@ Then run the following command using **admin previllage** to download and run th
 | Az | Powershell Module |
 | AWS PowerShell tools | Powershell Module | |
 | Stax2AWS | custom code | optional |
+
+## The scripts include windows terminal setting, the end result will be looking like below:
+![Windows Terminal](win-term.png)
