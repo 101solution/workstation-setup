@@ -15,10 +15,10 @@ param (
     $installDocker = $false,
     [Parameter()]
     [string]
-    $gitUser = "CShen_101Solution",
+    $gitUser = "",
     [Parameter()]
     [string]
-    $gitEmail = "chuishen@gmail.com",
+    $gitEmail = "",
     [Parameter()]
     [string]
     $defaultWorkFolder = "c:\projects"
@@ -112,10 +112,14 @@ $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-
 #copy git config
 Write-Output "Copy git config..."  | timestamp
 Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
-Write-Output "Set Git User and Email..."  | timestamp
-git config --global user.name $gitUser
-git config --global user.email $gitEmail
-
+if ("" -ne $gitUser){
+    Write-Output "Set Git User ..."  | timestamp
+    git config --global user.name $gitUser
+}
+if ("" -ne $gitEmail){
+    Write-Output "Set Git User Email..."  | timestamp
+    git config --global user.email $gitEmail
+}
 
 $terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
