@@ -7,8 +7,7 @@ This is PowerShell script to set up workstation with needed software
     > powershell.exe -executionpolicy bypass -file .\config-workstation.ps1
 
 ## Automate Download and run latest release
-To download the latets release and run the script using defaulr Role (cloudEngineer), you can save the following file to local as and run in pwoershell/cmd
-[https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1] PowerShell-get-latestPackages.ps1 Script or run the following command to download the file
+To download the latets release and run the script using defaulr Role (cloudEngineer), you can save the following file to local as and run in pwoershell/cmd [PowerShell-get-latestPackages.ps1](https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1) script or run the following command to download the file
 
 > $ps_url = "https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1"
 
