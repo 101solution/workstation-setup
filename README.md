@@ -35,8 +35,10 @@ Then run the following command using **admin previllage** to download and run th
 | Docker Desktop | winget | License may require for commercial use |
 | Adobe Acrobat Reader | winget |
 | Windows Terminal | winget |
+| PowerToys | winget | |
 | posh-git | Powershell Module |
 | PSReadLine | Powershell Module |
 | PSRule | Powershell Module |
 | Az | Powershell Module |
+| AWS PowerShell tools | Powershell Module | |
 | Stax2AWS | custom code | optional |

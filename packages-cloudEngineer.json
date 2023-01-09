@@ -63,6 +63,10 @@
     {
       "id": "Microsoft.WindowsTerminal",
       "source": "winget"
+    },
+    {
+      "id": "Microsoft.PowerToys",
+      "source": "winget"
     }
   ],
   "powershellModule": [
@@ -77,6 +81,9 @@
     },
     {
       "name": "PSRule"
+    },
+    {
+      "name": "AWSPowerShell.NetCore"
     }
   ]
 }
