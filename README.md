@@ -39,3 +39,4 @@ Then run the following command using **admin previllage** to download and run th
 | PSReadLine | Powershell Module |
 | PSRule | Powershell Module |
 | Az | Powershell Module |
+| Stax2AWS | custom code | optional |
