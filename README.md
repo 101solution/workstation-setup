@@ -41,7 +41,11 @@ Then run the following command using **admin previllage** to download and run th
 | PSRule | Powershell Module |
 | Az | Powershell Module |
 | AWS PowerShell tools | Powershell Module | |
-| Stax2AWS | custom code | optional |
+| Stax2AWS | custom script | optional |
+| WSL2 | custom script ||
+
+The script has also configured git using ohmyposh and posh-git, inspired by [My Ultimate PowerShell prompt with Oh My Posh and the Windows Terminal](https://www.hanselman.com/blog/my-ultimate-powershell-prompt-with-oh-my-posh-and-the-windows-terminal).
+It also set up PSReadLine by following [You should be customizing your PowerShell Prompt with PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
 
 ## The scripts include windows terminal setting, the end result will be looking like below:
 ![Windows Terminal](win-term.png)
