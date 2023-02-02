@@ -11,8 +11,6 @@ param (
     $enableWSL = $true,
     [boolean]
     $installStax2AWS = $false,
-    [boolean]
-    $installDocker = $false,
     [Parameter()]
     [string]
     $gitUser = "",
@@ -83,9 +81,6 @@ foreach ($module in $psModules) {
 
 if($installStax2AWS){
     Install-Stax2AWS-CLI -InstallPath $userToolsPath
-}
-if($installDocker){
-    Install-DockerEngine -InstallPath $userToolsPath
 }
 
 pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force}" | Out-Null

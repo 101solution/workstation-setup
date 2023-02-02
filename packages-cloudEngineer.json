@@ -53,11 +53,7 @@
       "source": "winget"
     },
     {
-      "id": "Docker.DockerDesktop",
-      "source": "winget"
-    },
-    {
-      "id": "Adobe.Acrobat.Reader.64-bit",
+      "id": "suse.RancherDesktop",
       "source": "winget"
     },
     {

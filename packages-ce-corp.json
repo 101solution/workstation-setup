@@ -1,0 +1,11 @@
+{
+  "chocolatey": [ ],
+  "winget": [
+    {
+      "id": "Microsoft.VisualStudio.2022.Professional",
+      "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb"
+    }
+  ],
+  "powershellModule": [
+  ]
+}
