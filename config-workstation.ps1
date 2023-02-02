@@ -128,7 +128,6 @@ if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
 if (Test-Path -LiteralPath $terminalSettingFile) {
     Write-Output "Update Windows Terminal Settings"  | timestamp
     $defaultSettings = Get-Content -LiteralPath "$PSScriptRoot\terminal-default-settings.json" | ConvertFrom-Json
-    $defaultSettings.backgroundImage = "$PSScriptRoot\backgroud\Chongming-China.png"
     $defaultSettings.startingDirectory = $defaultWorkFolder
     $terminalSettings = Get-Content -LiteralPath $terminalSettingFile | ConvertFrom-Json
     $terminalSettings.profiles.defaults = $defaultSettings

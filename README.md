@@ -32,10 +32,11 @@ Then run the following command using **admin previllage** to download and run th
 | Postman | winget  | |
 | OhMyPosh | winget |
 | AWS CLI | winget |
-| Docker Desktop | winget | License may require for commercial use |
+| Rancher Desktop | winget | Replacing Docker Desktop |
 | Adobe Acrobat Reader | winget |
 | Windows Terminal | winget |
 | PowerToys | winget | |
+| Bing Wallpaper | winget | |
 | posh-git | Powershell Module |
 | PSReadLine | Powershell Module |
 | PSRule | Powershell Module |
