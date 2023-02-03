@@ -456,18 +456,24 @@ Function Install-Stax2AWS-CLI {
         [string]
         $InstallPath
     )
+    Write-Output "Starting to install Stax2AWS cli..."
     if (-not(Test-Path $InstallPath)) {
-        New-Item -Path $InstallPath -ItemType Directory -Force
+        Write-Output "  Create folder  $InstallPath..."
+        New-Item -Path $InstallPath -ItemType Directory -Force | out-null
     }
-    Write-Output "Download latest workstaion config from github..."
-    $githubRepoUrl = "https://api.github.com/repos/stax-labs/stax2aws-releases/releases"
-    $releases = Invoke-RestMethod -Uri $githubRepoUrl -ErrorAction SilentlyContinue
-    $latestVersion = ($releases | Select-Object -first 1).assets.Where({ $_.browser_download_url.Contains("windows_amd64") }).browser_download_url
-    $fileName = ([uri]$latestVersion).Segments[-1]
-    Invoke-RestMethod -Uri $latestVersion -OutFile "$InstallPath\$fileName"
-    #Using .Net class System.IO.Compression.ZipFile
-    Add-Type -Assembly "System.IO.Compression.Filesystem"
-    [System.IO.Compression.ZipFile]::ExtractToDirectory("$InstallPath\$fileName", "$InstallPath")
+    if (-not(Test-Path "$InstallPath\stax2aws.exe")) {
+        Write-Output "  Download stax2aws cli from github..."
+        $githubRepoUrl = "https://api.github.com/repos/stax-labs/stax2aws-releases/releases"
+        $releases = Invoke-RestMethod -Uri $githubRepoUrl -ErrorAction SilentlyContinue
+        $latestVersion = ($releases | Select-Object -first 1).assets.Where({ $_.browser_download_url.Contains("windows_amd64") }).browser_download_url
+        $fileName = ([uri]$latestVersion).Segments[-1]
+        Invoke-RestMethod -Uri $latestVersion -OutFile "$InstallPath\$fileName"
+        #Using .Net class System.IO.Compression.ZipFile
+        Add-Type -Assembly "System.IO.Compression.Filesystem"
+        [System.IO.Compression.ZipFile]::ExtractToDirectory("$InstallPath\$fileName", "$InstallPath")
+        Remove-Item -LiteralPath "$InstallPath\$fileName" -Force
+    }
+    Write-Output "  Adding path $InstallPath to envrionment path..."
     Update-EnvironmentPath -NewPath $InstallPath
     Update-SessionEnvironment
 }
