@@ -301,6 +301,10 @@ function Wait-Docker() {
 try
 {
     Install-ContainerHost
+    # Create a wsl context if you'd like to run linux container On windows client 
+    docker context create wsl --docker host=tcp://127.0.0.1:2375
+    setx WSLENV BASH_ENV/u
+    setx BASH_ENV /etc/bash.bashrc
 }
 catch 
 {
