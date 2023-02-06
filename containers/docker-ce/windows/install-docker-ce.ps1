@@ -165,7 +165,7 @@ function Install-ContainerHost {
     }
     else
     {
-        Install-Docker -DockerPath $DockerPath -DockerDPath $DockerDPath -ContainerBaseImage $ContainerBaseImage
+        Install-Docker
         
     }
 
