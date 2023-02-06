@@ -53,10 +53,6 @@
       "source": "winget"
     },
     {
-      "id": "suse.RancherDesktop",
-      "source": "winget"
-    },
-    {
       "id": "Microsoft.WindowsTerminal",
       "source": "winget"
     },
