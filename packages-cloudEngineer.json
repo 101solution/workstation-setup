@@ -38,6 +38,7 @@
     },
     {
       "id": "Microsoft.VisualStudioCode",
+      "override": "/mergetasks='addcontextmenufiles,addcontextmenufolders'",
       "source": "winget"
     },
     {
