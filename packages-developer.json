@@ -1,9 +1,6 @@
 {
   "chocolatey": [
     {
-      "name": "kubernetes-cli"
-    },
-    {
       "name": "terraform"
     }
   ],
@@ -29,15 +26,8 @@
       "source": "winget"
     },
     {
-      "id": "GitHub.cli",
-      "source": "winget"
-    },
-    {
-      "id": "Kubernetes.minikube",
-      "source": "winget"
-    },
-    {
       "id": "Microsoft.VisualStudioCode",
+      "override": "/mergetasks='addcontextmenufiles,addcontextmenufolders'",
       "source": "winget"
     },
     {
@@ -49,19 +39,20 @@
       "source": "winget"
     },
     {
-      "id": "Amazon.AWSCLI",
-      "source": "winget"
-    },
-    {
-      "id": "Docker.DockerDesktop",
-      "source": "winget"
-    },
-    {
-      "id": "Adobe.Acrobat.Reader.64-bit",
-      "source": "winget"
-    },
-    {
       "id": "Microsoft.WindowsTerminal",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.PowerToys",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.BingWallpaper",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.VisualStudio.2022.Enterprise",
+      "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb",
       "source": "winget"
     }
   ],

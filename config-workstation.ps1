@@ -2,7 +2,7 @@
 param (
     [Parameter()]
     [string]
-    $role = "cloudEngineer",
+    $role = "developer",
     [Parameter()]
     [string]
     $taskName = "",
