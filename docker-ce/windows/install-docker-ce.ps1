@@ -208,9 +208,9 @@ function Install-Docker() {
     Start-Docker
     # change docker host to bypass admin previllage requirement
     Stop-Docker
-    Copy-Item ".\daemon.json" "$($env:ProgramData)\docker\config\"
+    Copy-Item "$PSScriptRoot\daemon.json" "$($env:ProgramData)\docker\config\"
     [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::Machine)
-    Start-Docker
+    Start-Dockercopy-i  
     #
     # Waiting for docker to come to steady state
     #
