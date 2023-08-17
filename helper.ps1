@@ -110,7 +110,7 @@ Function Install-Fonts {
     param (
         [Parameter()]
         [string]
-        $fontName = "Caskaydia Cove Nerd Font Complete Mono Windows Compatible",
+        $fontName = "CaskaydiaCoveNerdFontMono-Regular",
         [Parameter()]
         [string]
         $fontFolder = "."
