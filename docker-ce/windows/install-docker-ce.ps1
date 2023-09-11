@@ -209,7 +209,7 @@ function Install-Docker() {
     # change docker host to bypass admin previllage requirement
     Stop-Docker
     Copy-Item "$PSScriptRoot\daemon.json" "$($env:ProgramData)\docker\config\"
-    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::Machine)
+    
     Start-Dockercopy-i  
     #
     # Waiting for docker to come to steady state
@@ -277,10 +277,9 @@ function Wait-Docker() {
 
 try {
     Install-ContainerHost
-    # Create a wsl context if you'd like to run linux container On windows client 
-    docker context create wsl --docker host=tcp://127.0.0.1:2375
-    [Environment]::SetEnvironmentVariable("WSLENV", "BASH_ENV/u", [System.EnvironmentVariableTarget]::User)
-    [Environment]::SetEnvironmentVariable("BASH_ENV", "/etc/bash.bashrc", [System.EnvironmentVariableTarget]::User)
+    # Create a win context if you'd like to run windows container On windows client 
+    docker context create win --docker host=tcp://127.0.0.1:2378
+    
 }
 catch {
     Write-Error $_

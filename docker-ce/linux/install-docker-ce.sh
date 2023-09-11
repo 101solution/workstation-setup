@@ -4,6 +4,8 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] 
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io
 
+usermod -aG docker $USER && newgrp docker
+
 # Automatically start on startup
 sudo systemctl enable docker.service
 sudo systemctl enable containerd.service
