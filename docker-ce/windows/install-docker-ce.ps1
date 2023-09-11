@@ -210,7 +210,7 @@ function Install-Docker() {
     Stop-Docker
     Copy-Item "$PSScriptRoot\daemon.json" "$($env:ProgramData)\docker\config\"
     
-    Start-Dockercopy-i  
+    Start-Docker 
     #
     # Waiting for docker to come to steady state
     #
