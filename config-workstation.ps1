@@ -39,7 +39,10 @@ Write-Output "Register NuGet source ..." | timestamp
 Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 -ForceBootstrap -Force -ErrorAction SilentlyContinue | Out-Null
 
 Write-Output "Getting package config ..." | timestamp
-$packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
+$packageConfigBase = Get-Content $PSScriptRoot\packages-min.json | ConvertFrom-Json
+if($role -ne 'min'){
+    $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
+}
 
 $wingetPackages = $packageConfig.winget
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
