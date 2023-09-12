@@ -44,7 +44,7 @@ if($role -ne 'min'){
     $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
 }
 
-$wingetPackages = $packageConfig.winget
+$wingetPackages = ($packageConfigBase.winget + $packageConfig.winget) | Select-Object -Unique -Property id,source,override
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     Install-WinGet
     #call winget list as the first time it takes some time to load
@@ -61,7 +61,7 @@ if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     }
 }
     
-$chocoPackages = $packageConfig.chocolatey
+$chocoPackages = ($packageConfigBase.chocolatey + $packageConfig.chocolatey) | Select-Object -Unique -Property name,additionalParameters
 if ($chocoPackages -and $chocoPackages.Count -gt 0) {
     Install-Choco
     foreach ($pack in $chocoPackages) {
@@ -76,7 +76,7 @@ Write-Output "Update Environment Variables in the session"  | timestamp
 Update-SessionEnvironment
 Install-Fonts -fontFolder $PSScriptRoot
 
-$psModules = $packageConfig.powershellModule
+$psModules = ($packageConfigBase.powershellModule + $packageConfig.powershellModule) | Select-Object -Unique -Property name
 
 foreach ($module in $psModules) {
     Install-PSModule -PsModuleName $module.name
