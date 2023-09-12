@@ -18,3 +18,4 @@ sudo usermod -aG docker $USER && newgrp docker
 sudo systemctl daemon-reload
 sudo systemctl restart docker.service
 
+sudo shutdown now -r
