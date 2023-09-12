@@ -2,9 +2,6 @@
   "chocolatey": [
     {
       "name": "kubernetes-cli"
-    },
-    {
-      "name": "terraform"
     }
   ],
   "winget": [
@@ -13,19 +10,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.PowerShell",
-      "source": "winget"
-    },
-    {
       "id": "Microsoft.AzureCLI",
-      "source": "winget"
-    },
-    {
-      "id": "Ditto.Ditto",
-      "source": "winget"
-    },
-    {
-      "id": "Git.Git",
       "source": "winget"
     },
     {
@@ -37,16 +22,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.VisualStudioCode",
-      "override": "/mergetasks=addcontextmenufiles,addcontextmenufolders,!runcode /verysilent",
-      "source": "winget"
-    },
-    {
       "id": "Postman.Postman",
-      "source": "winget"
-    },
-    {
-      "id": "JanDeDobbeleer.OhMyPosh",
       "source": "winget"
     },
     {
@@ -54,15 +30,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.WindowsTerminal",
-      "source": "winget"
-    },
-    {
-      "id": "Microsoft.PowerToys",
-      "source": "winget"
-    },
-    {
-      "id": "Microsoft.BingWallpaper",
+      "id": "Hashicorp.Terraform",
       "source": "winget"
     }
   ],

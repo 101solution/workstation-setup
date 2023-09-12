@@ -1,0 +1,71 @@
+{
+  "chocolatey": [
+    {
+      "name": "notepadplusplus"
+    },
+    {
+      "name": "filezilla"
+    }
+  ],
+  "winget": [
+    {
+      "id": "Microsoft.DotNet.SDK.7",
+      "source": "winget"
+    },
+        {
+      "id": "Microsoft.AzureCLI",
+      "source": "winget"
+    },
+       {
+      "id": "Postman.Postman",
+      "source": "winget"
+    },
+       {
+      "id": "Microsoft.VisualStudio.2022.Enterprise",
+      "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.SQLServerManagementStudio",
+      "source": "winget"
+    },
+    {
+      "id": "Atlassian.Sourcetree",
+      "source": "winget"
+    },
+    {
+      "id": "TortoiseGit.TortoiseGit",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.Azure.StorageExplorer",
+      "source": "winget"
+    },
+    {
+      "id": "Amazon.AWSCLI",
+      "source": "winget"
+    },
+    {
+      "id": "dbeaver.dbeaver",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.PowerBI",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.Azure.AZCopy.10",
+      "source": "winget"
+    },
+    {
+      "id": "WiresharkFoundation.Wireshark",
+      "source": "winget"
+    },
+    {
+      "id": "Hashicorp.Terraform",
+      "source": "winget"
+    }
+  ],
+  "powershellModule": [] 
+  
+}
