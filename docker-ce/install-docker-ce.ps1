@@ -200,20 +200,29 @@ function Install-Docker() {
     )
 
     curl.exe -o docker.zip -LO https://download.docker.com/win/static/stable/x86_64/docker-$dockerVersion.zip 
-    Expand-Archive docker.zip -DestinationPath C:\
+    Expand-Archive docker.zip -DestinationPath C:\ -Force
     [Environment]::SetEnvironmentVariable("Path", "$($env:path);C:\docker", [System.EnvironmentVariableTarget]::Machine)
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     Remove-Item -Path ".\docker.zip" -Force
     dockerd --register-service --service-name $global:DockerServiceName
-
+    if(-not (Test-Path -Path  "$($env:ProgramData)\docker\config\") )
+    {
+        Start-Docker
+        Start-Sleep -Seconds 10
+        Stop-Docker
+    }
     Copy-Item "$PSScriptRoot\daemon.json" "$($env:ProgramData)\docker\config\"
     
     Start-Docker 
+    docker context create win --docker host=tcp://127.0.0.1:2378
     #
     # Waiting for docker to come to steady state
     #
     Wait-Docker
-
+    Write-Output "setting up  environment variable" 
+    [Environment]::SetEnvironmentVariable("WSLENV", "BASH_ENV/u", [System.EnvironmentVariableTarget]::User)
+    [Environment]::SetEnvironmentVariable("BASH_ENV", "/etc/bash.bashrc", [System.EnvironmentVariableTarget]::User)
+    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2375", [System.EnvironmentVariableTarget]::User)
     if (-not [string]::IsNullOrEmpty($ContainerBaseImage)) {
         Write-Output "Attempting to pull specified base image: $ContainerBaseImage"
         docker pull $ContainerBaseImage
@@ -231,8 +240,7 @@ function Start-Docker() {
 }
 
 
-function 
-Stop-Docker() {
+function Stop-Docker() {
     Stop-Service -Name $global:DockerServiceName
 }
 
@@ -251,7 +259,7 @@ function Wait-Docker() {
 
     while (-not $dockerReady) {
         try {
-            docker version | Out-Null
+            docker -c win version | Out-Null
 
             if (-not $?) {
                 throw "Docker daemon is not running yet"
@@ -278,12 +286,6 @@ try {
     [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::User)
     Install-ContainerHost
     # Create a win context if you'd like to run windows container On windows client 
-    docker context create win --docker host=tcp://127.0.0.1:2378
-    
-    Write-Output "setting up  environment variable" 
-    [Environment]::SetEnvironmentVariable("WSLENV", "BASH_ENV/u", [System.EnvironmentVariableTarget]::User)
-    [Environment]::SetEnvironmentVariable("BASH_ENV", "/etc/bash.bashrc", [System.EnvironmentVariableTarget]::User)
-    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2375", [System.EnvironmentVariableTarget]::User)
 
     Write-Output "configuring docker on linux (wsl)" 
     wsl -- ./install-docker-ce.sh
