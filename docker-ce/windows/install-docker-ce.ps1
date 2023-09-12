@@ -205,9 +205,7 @@ function Install-Docker() {
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     Remove-Item -Path ".\docker.zip" -Force
     dockerd --register-service --service-name $global:DockerServiceName
-    Start-Docker
-    # change docker host to bypass admin previllage requirement
-    Stop-Docker
+
     Copy-Item "$PSScriptRoot\daemon.json" "$($env:ProgramData)\docker\config\"
     
     Start-Docker 
