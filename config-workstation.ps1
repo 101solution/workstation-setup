@@ -2,7 +2,7 @@
 param (
     [Parameter()]
     [string]
-    $role = "developer",
+    $role = "min",
     [Parameter()]
     [string]
     $taskName = "",

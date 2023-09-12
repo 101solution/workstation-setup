@@ -1,0 +1,53 @@
+{
+  "chocolatey": [],
+  "winget": [
+    {
+      "id": "Microsoft.PowerShell",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.AzureCLI",
+      "source": "winget"
+    },
+    {
+      "id": "Ditto.Ditto",
+      "source": "winget"
+    },
+    {
+      "id": "Git.Git",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.VisualStudioCode",
+      "override": "/mergetasks='addcontextmenufiles,addcontextmenufolders'",
+      "source": "winget"
+    },
+    {
+      "id": "JanDeDobbeleer.OhMyPosh",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.WindowsTerminal",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.BingWallpaper",
+      "source": "winget"
+    },
+    {
+      "id": "7zip.7zip",
+      "source": "winget"
+    }
+  ],
+  "powershellModule": [
+    {
+      "name": "posh-git"
+    },
+    {
+      "name": "PSReadLine"
+    },
+    {
+      "name": "PSRule"
+    }
+  ]
+}
