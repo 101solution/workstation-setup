@@ -11,7 +11,7 @@ $global:RebootRequired = $false
 $global:ErrorFile = "$pwd\Install-ContainerHost.err"
 
 $global:BootstrapTask = "ContainerBootstrap"
-
+$global:ScriptFolder = "c:\config\workstation\docker-ce"
 
 function Restart-And-Run() {
     Test-Admin
@@ -23,16 +23,10 @@ function Restart-And-Run() {
     #
     # Update .\ to the invocation directory for the bootstrap
     #
-    $scriptPath = $script:MyInvocation.MyCommand.Path
 
-    $argList = $argList -replace "\.\\", "$pwd\"
+    $argList = $argList -replace "\.\\", "$($global:ScriptFolder)\"
+    $scriptPath = "$($global:ScriptFolder)\$($script:MyInvocation.MyCommand.Name)"
 
-    if ((Split-Path -Parent -Path $scriptPath) -ne $pwd) {
-        $sourceScriptPath = $scriptPath
-        $scriptPath = "$pwd\$($script:MyInvocation.MyCommand.Name)"
-
-        Copy-Item $sourceScriptPath $scriptPath
-    }
 
     Write-Output "Creating scheduled task action ($scriptPath $argList)..."
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoExit $scriptPath $argList"
@@ -211,7 +205,7 @@ function Install-Docker() {
         Start-Sleep -Seconds 10
         Stop-Docker
     }
-    Copy-Item "$PSScriptRoot\daemon.json" "$($env:ProgramData)\docker\config\"
+    Copy-Item "$($global:ScriptFolder)\daemon.json" "$($env:ProgramData)\docker\config\"
     
     Start-Docker 
     docker context create win --docker host=tcp://127.0.0.1:2378
@@ -282,13 +276,7 @@ function Wait-Docker() {
 }
 
 try {
-    Write-Output "configuring docker on Windows (host)" 
-    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::User)
     Install-ContainerHost
-    # Create a win context if you'd like to run windows container On windows client 
-
-    Write-Output "configuring docker on linux (wsl)" 
-    wsl -- ./install-docker-ce.sh
 }
 catch {
     Write-Error $_
