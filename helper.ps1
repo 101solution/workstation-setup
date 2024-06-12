@@ -252,10 +252,12 @@ Function Install-WinGet {
         [switch]$Preview,
         [Parameter(HelpMessage = "Display the AppxPackage after installation.")]
         [switch]$Passthru
+        [Parameter(HelpMessage = "Upgrade to Latest version.")]
+        [switch]$Upgrade
     )
     Write-Output "  Checking if winget installed..." | timestamp
     $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-    if (-not $wingetCmd) {
+    if ((-not $wingetCmd) -or $Upgrade) {
         Write-Output "  Winget is not installed, install now..." | timestamp
 
         if ($Iscoreclr -AND ($PSVersionTable.PSVersion -le 7.2)) {
@@ -265,38 +267,18 @@ Function Install-WinGet {
 
             Write-Output "  Installing required package Microsoft.VCLibs.140.00.UWPDesktop..." | timestamp
             Try {
-                Add-AppxPackage -Path https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx -ErrorAction Stop
+                Add-AppxPackage -Path https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx -ErrorAction SilentlyContinue
             }
             Catch {
                 Throw $_
             }
         
-            Write-Output "  Installing required package Microsoft.UI.Xaml.2.7..." | timestamp
-	        $nugetPath = "$env:temp\Microsoft.UI.Xaml.2.7.3.nupkg"
+            Write-Output "  Installing required package Microsoft.UI.Xaml.2.8..." | timestamp
             try {
-		        if (-not (Test-Path $nugetPath )) {
-			        Write-Output "    Downloading Nuget Package Microsoft.UI.Xaml..." | timestamp
-			        Save-Package -Name Microsoft.UI.Xaml -RequiredVersion 2.7.3 -Path $env:temp
-		        }
-                Write-Output "    Extracting Nuget Package Microsoft.UI.Xaml..." | timestamp
-                Rename-Item -Path $nugetPath -NewName "Microsoft.UI.Xaml.2.7.3.zip" -Force
- 		        Expand-Archive -Path "$env:temp\Microsoft.UI.Xaml.2.7.3.zip" -DestinationPath "$env:temp\Microsoft.UI.Xaml\"
-                
-                $uixml = Join-Path -Path "$env:temp\Microsoft.UI.Xaml\tools\AppX\x64\Release\" -ChildPath "Microsoft.UI.Xaml.2.7.appx"
-                if (Test-Path $uixml) {
-		            Write-Output "    Installing package Microsoft.UI.Xaml.2.7..." | timestamp
-                    Add-AppxPackage -Path $uixml -ErrorAction Stop
-                }
-                else {
-                    Throw "Failed to find $uixml"
-                }
+                Add-AppxPackage -Path  https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx -ErrorAction SilentlyContinue
             }
             catch {
                 Throw $_
-            }
-            finally {
-                Remove-Item -LiteralPath "$env:temp\Microsoft.UI.Xaml.2.7.3.zip" -Force -ErrorAction SilentlyContinue
-                Remove-Item -LiteralPath "$env:temp\Microsoft.UI.Xaml" -Force -Recurse -ErrorAction SilentlyContinue
             }
 
         Try {
