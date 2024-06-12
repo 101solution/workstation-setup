@@ -251,7 +251,7 @@ Function Install-WinGet {
         [Parameter(HelpMessage = "Install the latest preview build.")]
         [switch]$Preview,
         [Parameter(HelpMessage = "Display the AppxPackage after installation.")]
-        [switch]$Passthru
+        [switch]$Passthru,
         [Parameter(HelpMessage = "Upgrade to Latest version.")]
         [switch]$Upgrade
     )
