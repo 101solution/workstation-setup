@@ -46,7 +46,7 @@ if($role -ne 'min'){
 
 $wingetPackages = ($packageConfigBase.winget + $packageConfig.winget) | Select-Object -Unique -Property id,source,override
 if ($wingetPackages -and $wingetPackages.Count -gt 0) {
-    Install-WinGet
+    Install-WinGet -Upgrade
     #call winget list as the first time it takes some time to load
     Write-Output "Run winget list ..." | timestamp
     winget list --accept-source-agreements | Out-Null
