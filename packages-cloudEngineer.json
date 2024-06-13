@@ -32,6 +32,10 @@
     {
       "id": "Hashicorp.Terraform",
       "source": "winget"
+    },
+    {
+      "id": "OpenJS.NodeJS.LTS",
+      "source": "winget"
     }
   ],
   "powershellModule": [
