@@ -309,11 +309,11 @@ function Convert-WingetOutput {
         $packageId
     )
     if ($wingetOutput -and ($wingetOutput.Count -ge 3)) {
-        $idIndex = $wingetOutput[1].IndexOf("Id")
-        $appIndex = $wingetOutput[3].IndexOf($packageId)
+        $idIndex = $wingetOutput[0].IndexOf("Id")
+        $appIndex = $wingetOutput[2].IndexOf($packageId)
         if ($idIndex -ge 0 -and $appIndex -ge 0) {
-            $header = $wingetOutput[1].Substring($idIndex) -replace '\s+', ","
-            $data = $wingetOutput[3].Substring($appIndex) -replace '\s+', ","
+            $header = $wingetOutput[0].Substring($idIndex) -replace '\s+', ","
+            $data = $wingetOutput[2].Substring($appIndex) -replace '\s+', ","
             return  @($header, $data) | ConvertFrom-Csv
         }
     }
