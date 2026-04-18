@@ -1,3 +1,8 @@
+param (
+    [Parameter()]
+    [string]
+    $role = "mrldev"
+)
 $configPath = "c:\config"
 if (Test-Path -Path "$configPath" -PathType Container) {
     Write-Output "$configPath exists"
@@ -23,4 +28,4 @@ if (Test-Path -Path "$configPath\workstation" -PathType Container) {
 Get-Item -Path "$configPath\101solution-workstation-*" | Rename-item -NewName "workstation"
 Remove-Item -Path "$configPath\workstation.zip" -Force
 Write-Output "Start workstation configuration..."
-powershell.exe -executionpolicy bypass -file $configPath\workstation\config-workstation.ps1
+powershell.exe -executionpolicy bypass -file $configPath\workstation\config-workstation.ps1 -role $role
