@@ -1,13 +1,13 @@
 {
-  "chocolatey": [
+  "winget": [
     {
-      "name": "notepadplusplus"
+      "id": "Notepad++.Notepad++",
+      "source": "winget"
     },
     {
-      "name": "filezilla"
-    }
-  ],
-  "winget": [
+      "id": "WinSCP.WinSCP",
+      "source": "winget"
+    },
     {
       "id": "Microsoft.DotNet.SDK.8",
       "source": "winget"
@@ -63,6 +63,10 @@
     },
     {
       "id": "Hashicorp.Terraform",
+      "source": "winget"
+    },
+    {
+      "id": "Anthropic.ClaudeCode",
       "source": "winget"
     }
   ],

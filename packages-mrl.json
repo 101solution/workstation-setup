@@ -5,11 +5,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.DotNet.SDK.7",
-      "source": "winget"
-    },
-    {
-      "id": "Microsoft.PowerShell",
+      "id": "Microsoft.DotNet.SDK.8",
       "source": "winget"
     },
     {
@@ -17,24 +13,7 @@
       "source": "winget"
     },
     {
-      "id": "Ditto.Ditto",
-      "source": "winget"
-    },
-    {
-      "id": "Git.Git",
-      "source": "winget"
-    },
-    {
-      "id": "Microsoft.VisualStudioCode",
-      "override": "/mergetasks='addcontextmenufiles,addcontextmenufolders'",
-      "source": "winget"
-    },
-    {
       "id": "Postman.Postman",
-      "source": "winget"
-    },
-    {
-      "id": "JanDeDobbeleer.OhMyPosh",
       "source": "winget"
     },
     {
@@ -46,7 +25,11 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.BingWallpaper",
+      "id": "Microsoft.Azure.StorageExplorer",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.Azure.AZCopy.10",
       "source": "winget"
     },
     {
@@ -54,15 +37,5 @@
       "source": "winget"
     }
   ],
-  "powershellModule": [
-    {
-      "name": "posh-git"
-    },
-    {
-      "name": "PSReadLine"
-    },
-    {
-      "name": "PSRule"
-    }
-  ]
+  "powershellModule": []
 }
