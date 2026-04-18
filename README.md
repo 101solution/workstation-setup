@@ -1,52 +1,39 @@
 # Workstation Configuration
-This is PowerShell script to set up workstation with needed software
-1. Open PowerShell window in Administrator mode
-1. Goto the folder where the script copied to
-1. update packages-developer.json file to your need
-1. run
-    > powershell.exe -executionpolicy bypass -file .\config-workstation.ps1
+PowerShell script to set up a Windows workstation with needed software.
 
-## Automate Download and run latest release
-To download the latets release and run the script using defaulr Role (developer), you can run the following command to download the file from Github Repo
+## Quick Start (New VM)
 
-> Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1" -OutFile "$env:temp\get-latestPackages.ps1"
+Run the following one-liner in **Administrator PowerShell**, replacing `mrldev` with your desired role:
 
-Then run the following command using **admin previllage** to download and run the workstation set up 
+```powershell
+Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1" -OutFile "$env:temp\get-latestPackages.ps1"; powershell.exe -executionpolicy bypass -file $env:temp\get-latestPackages.ps1 -role mrldev
+```
 
-> powershell.exe -executionpolicy bypass -file $env:temp\get-latestPackages.ps1
+## Available Roles
 
-## Default packages 
+| Role | Description |
+|------|-------------|
+| `mrldev` | Full developer setup — VS Enterprise, SSMS, DBeaver, Sourcetree, TortoiseGit, Power BI, Wireshark, and more |
+| `mrl` | Lighter setup — Terraform, .NET SDK 8, Azure CLI, Postman, AWS CLI, PowerToys, Storage Explorer, AZCopy |
+| `cloudEngineer` | Cloud engineering — kubectl, Terraform, .NET SDK 7, Azure CLI, minikube, Postman, AWS CLI, NodeJS |
+| `runner` | GitHub Actions self-hosted runner — minimal toolset |
+| `ce-corp` | Docker CE setup with Visual Studio Enterprise |
+| `ce-free` | Docker CE setup with Visual Studio Community |
 
-| Package | source | Note |
-| ------- | ------ | -----|
-| kubernetes-cli | chocolatey |
-| terraform | chocolatey |
-| DotNet SDK 7 | winget |
-| PowerShell Core | winget |
-| Azure CLI | winget |
-| Ditto | winget | https://ditto-cp.sourceforge.io/ |
-| Git | winget |
-| GitHub cli | winget |
-| minikube | winget | run Kubernetes cluster on local computer |
-| Visual Studio Code | winget |
-| Postman | winget  | |
-| OhMyPosh | winget |
-| AWS CLI | winget |
-| Rancher Desktop | winget | Replacing Docker Desktop |
-| Adobe Acrobat Reader | winget |
-| Windows Terminal | winget |
-| PowerToys | winget | |
-| Bing Wallpaper | winget | |
-| posh-git | Powershell Module |
-| PSReadLine | Powershell Module |
-| PSRule | Powershell Module |
-| Az | Powershell Module |
-| AWS PowerShell tools | Powershell Module | |
-| Stax2AWS | custom script | optional |
-| WSL2 | custom script ||
+All roles include the base packages from `packages-min.json`: PowerShell, Git, VS Code, Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, posh-git, PSReadLine, PSRule.
 
-The script has also configured git using ohmyposh and posh-git, inspired by [My Ultimate PowerShell prompt with Oh My Posh and the Windows Terminal](https://www.hanselman.com/blog/my-ultimate-powershell-prompt-with-oh-my-posh-and-the-windows-terminal).
-It also set up PSReadLine by following [You should be customizing your PowerShell Prompt with PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
+## Manual Setup
 
-## The scripts include windows terminal setting, the end result will be looking like below:
+1. Open PowerShell in **Administrator** mode
+2. Run:
+```powershell
+powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role <role>
+```
+
+## Terminal
+
+The script configures Oh My Posh and PSReadLine, inspired by:
+- [My Ultimate PowerShell prompt with Oh My Posh and the Windows Terminal](https://www.hanselman.com/blog/my-ultimate-powershell-prompt-with-oh-my-posh-and-the-windows-terminal)
+- [You should be customizing your PowerShell Prompt with PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
+
 ![Windows Terminal](win-term.png)
