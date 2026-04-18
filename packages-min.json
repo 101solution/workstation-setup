@@ -1,5 +1,4 @@
 {
-  "chocolatey": [],
   "winget": [
     {
       "id": "Microsoft.PowerShell",

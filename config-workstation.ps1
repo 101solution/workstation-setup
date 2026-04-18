@@ -61,14 +61,6 @@ if ($wingetPackages -and $wingetPackages.Count -gt 0) {
     }
 }
     
-$chocoPackages = ($packageConfigBase.chocolatey + $packageConfig.chocolatey) | Select-Object -Unique -Property name,additionalParameters
-if ($chocoPackages -and $chocoPackages.Count -gt 0) {
-    Install-Choco
-    foreach ($pack in $chocoPackages) {
-        Install-ChocoPackage -packageName $pack.name -additionalParameters $pack.additionalParameters
-    }
-}
-
 $userToolsPath = "$env:UserProfile\tools"
 
 #Reload environment variables for the session

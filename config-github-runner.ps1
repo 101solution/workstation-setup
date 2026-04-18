@@ -28,18 +28,14 @@ Write-Output "Getting package config ..." | timestamp
 $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
 
     
-$chocoPackages = $packageConfig.chocolatey
-if ($chocoPackages -and $chocoPackages.Count -gt 0) {
-    Install-Choco
-    foreach ($pack in $chocoPackages) {
-        Install-ChocoPackage -packageName $pack.name -additionalParameters $pack.additionalParameters
-        #Write-Output "Check if computer need restart..."  | timestamp
-        #$needRestart = Test-VMRestart
-        #if ($needRestart) {
-        #    Write-Output "Restarting Computer"  | timestamp
-        #    $null = Stop-Transcript
-        #    Restart-Computer -Force
-        #}
+$wingetPackages = $packageConfig.winget
+if ($wingetPackages -and $wingetPackages.Count -gt 0) {
+    Install-WinGet
+    Write-Output "Run winget list ..." | timestamp
+    winget list --accept-source-agreements | Out-Null
+    Start-Sleep -Milliseconds 2000
+    foreach ($pack in $wingetPackages) {
+        Install-WinGetPackage -packageId $pack.id -source $pack.source
     }
 }
 

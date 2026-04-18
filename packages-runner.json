@@ -1,22 +1,26 @@
 {
-  "chocolatey": [
+  "winget": [
     {
-      "name": "terraform"
+      "id": "Hashicorp.Terraform",
+      "source": "winget"
     },
     {
-      "name": "dotnet-sdk"
+      "id": "Microsoft.DotNet.SDK.7",
+      "source": "winget"
     },
     {
-      "name": "pwsh"
+      "id": "Microsoft.PowerShell",
+      "source": "winget"
     },
     {
-      "name": "azure-cli"
+      "id": "Microsoft.AzureCLI",
+      "source": "winget"
     },
     {
-      "name": "git"
+      "id": "Git.Git",
+      "source": "winget"
     }
   ],
-  "winget": [  ],
   "powershellModule": [
     {
       "name": "Az"

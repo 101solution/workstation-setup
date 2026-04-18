@@ -198,6 +198,8 @@ function Install-Docker() {
     [Environment]::SetEnvironmentVariable("Path", "$($env:path);C:\docker", [System.EnvironmentVariableTarget]::Machine)
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     Remove-Item -Path ".\docker.zip" -Force
+    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::Machine)
+    Copy-Item ./daemon.json -Destination "$($env:ProgramData)\docker\config" -Force
     dockerd --register-service --service-name $global:DockerServiceName
     if(-not (Test-Path -Path  "$($env:ProgramData)\docker\config\") )
     {

@@ -1,7 +1,7 @@
 {
   "winget": [
     {
-      "id": "Kubernetes.kubectl",
+      "id": "Hashicorp.Terraform",
       "source": "winget"
     },
     {
@@ -9,15 +9,24 @@
       "source": "winget"
     },
     {
+      "id": "Microsoft.PowerShell",
+      "source": "winget"
+    },
+    {
       "id": "Microsoft.AzureCLI",
       "source": "winget"
     },
     {
-      "id": "GitHub.cli",
+      "id": "Ditto.Ditto",
       "source": "winget"
     },
     {
-      "id": "Kubernetes.minikube",
+      "id": "Git.Git",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.VisualStudioCode",
+      "override": "/mergetasks='addcontextmenufiles,addcontextmenufolders'",
       "source": "winget"
     },
     {
@@ -25,15 +34,19 @@
       "source": "winget"
     },
     {
+      "id": "JanDeDobbeleer.OhMyPosh",
+      "source": "winget"
+    },
+    {
       "id": "Amazon.AWSCLI",
       "source": "winget"
     },
     {
-      "id": "Hashicorp.Terraform",
+      "id": "Microsoft.PowerToys",
       "source": "winget"
     },
     {
-      "id": "OpenJS.NodeJS.LTS",
+      "id": "Microsoft.BingWallpaper",
       "source": "winget"
     },
     {
@@ -46,16 +59,10 @@
       "name": "posh-git"
     },
     {
-      "name": "Az"
-    },
-    {
       "name": "PSReadLine"
     },
     {
       "name": "PSRule"
-    },
-    {
-      "name": "AWSPowerShell.NetCore"
     }
   ]
 }
