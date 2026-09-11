@@ -262,6 +262,23 @@ Design is documented in the "Unattended execution and reboot resume" section of 
      dockerd needs the Containers feature to start.
   Then once more with the default `ScheduledTask` resume to see the task fire and remove itself.
 
+  **Test VM (created 2026-09-11):** `vm-wstest-01` in resource group `S101-ARG-WSTEST-MRL`,
+  subscription VS_Sub_MRL (`1f513fde-7a26-4aae-a69e-3f29f41d7f2a`), Australia East, Windows 11
+  Enterprise 24H2, `Standard_D4s_v5`. RDP is allowed only from the home IP; auto-shutdown 14:00 UTC.
+  A clean incremental snapshot `snap-vm-wstest-01-clean-20260911` was taken before any setup ran
+  (stock image, pre-Windows-Update). Roll back between test passes by swapping the OS disk:
+  ```powershell
+  $sub='1f513fde-7a26-4aae-a69e-3f29f41d7f2a'; $rg='S101-ARG-WSTEST-MRL'; $vm='vm-wstest-01'
+  $old = az vm show --subscription $sub -g $rg -n $vm --query storageProfile.osDisk.name -o tsv
+  $new = "$vm-osdisk-$(Get-Date -Format yyyyMMddHHmm)"
+  az vm deallocate --subscription $sub -g $rg -n $vm
+  az disk create --subscription $sub -g $rg -n $new --source snap-vm-wstest-01-clean-20260911 --sku Premium_LRS
+  az vm update --subscription $sub -g $rg -n $vm --os-disk $new
+  az vm start --subscription $sub -g $rg -n $vm
+  az disk delete --subscription $sub -g $rg -n $old --yes   # once the VM is confirmed up
+  ```
+  Tear everything down with `az group delete -n $rg --subscription $sub --yes --no-wait`.
+
 - [ ] **G11. Confirm whether `docker-ce/linux/systemd/` is now redundant.** `Initialize-WslUser`
   writes `systemd=true` to `/etc/wsl.conf`, which is the modern supported way; the older hack is
   still in the repo. Verify on a real WSL2 install before removing anything.
