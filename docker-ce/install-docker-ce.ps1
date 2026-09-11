@@ -1,55 +1,31 @@
 
 ############################################################
 # Script to install the community edition of docker on Windows
+#
+# Worker script driven by ./config-docker.ps1, which owns the reboot/resume logic. Exit codes:
+#   0    Docker Engine installed (or already present) and the daemon answered on the 'win' context
+#   3010 a Windows feature was enabled and needs a restart first; re-run after rebooting
+#   1    failure
 ############################################################
 
 #Requires -Version 5.0
 
+[CmdletBinding()]
+param (
+    [Parameter(HelpMessage = "Force Hyper-V isolation. Implied on client SKUs, which cannot run process-isolated containers.")]
+    [switch]
+    $HyperV,
+    [Parameter()]
+    [string]
+    $DockerVersion = "20.10.23"
+)
 
 $global:RebootRequired = $false
 
-$global:ErrorFile = "$pwd\Install-ContainerHost.err"
-
-$global:BootstrapTask = "ContainerBootstrap"
+# Name of the at-logon task older versions of this script registered to resume after a reboot.
+# Resume is now handled by config-docker.ps1; this is only kept so a stale task gets cleaned up.
+$global:LegacyBootstrapTask = "ContainerBootstrap"
 $global:ScriptFolder = $PSScriptRoot
-
-function Restart-And-Run() {
-    Test-Admin
-
-    Write-Output "Restart is required; restarting now..."
-
-    $argList = $script:MyInvocation.Line.replace($script:MyInvocation.InvocationName, "")
-
-    #
-    # Update .\ to the invocation directory for the bootstrap
-    #
-
-    $argList = $argList -replace "\.\\", "$($global:ScriptFolder)\"
-    $scriptPath = "$($global:ScriptFolder)\$($script:MyInvocation.MyCommand.Name)"
-
-
-    Write-Output "Creating scheduled task action ($scriptPath $argList)..."
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoExit $scriptPath $argList"
-
-    Write-Output "Creating scheduled task trigger..."
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-
-    Write-Output "Registering script to re-run at next user logon..."
-    Register-ScheduledTask -TaskName $global:BootstrapTask -Action $action -Trigger $trigger -RunLevel Highest | Out-Null
-
-    try {
-        Restart-Computer -Force
-        
-    }
-    catch {
-        Write-Error $_
-
-        Write-Output "Please restart your computer manually to continue script execution."
-    }
-
-    exit
-}
-
 
 function Install-Feature {
     [CmdletBinding()]
@@ -68,12 +44,11 @@ function Install-Feature {
             Test-Admin
 
             Write-Output "Enabling feature $FeatureName..."
-        }
+            $featureInstall = Add-WindowsFeature $FeatureName
 
-        $featureInstall = Add-WindowsFeature $FeatureName
-
-        if ($featureInstall.RestartNeeded -eq "Yes") {
-            $global:RebootRequired = $true;
+            if ($featureInstall.RestartNeeded -eq "Yes") {
+                $global:RebootRequired = $true;
+            }
         }
     }
     else {
@@ -98,13 +73,11 @@ function Install-Feature {
 }
 
 function Install-ContainerHost {
-    "If this file exists when Install-ContainerHost.ps1 exits, the script failed!" | Out-File -FilePath $global:ErrorFile
-
     if (Test-Client) {
         if (-not $HyperV) {
             Write-Output "Enabling Hyper-V containers by default for Client SKU"
             $HyperV = $true
-        }    
+        }
     }
     #
     # Validate required Windows features
@@ -116,21 +89,16 @@ function Install-ContainerHost {
     }
 
     if ($global:RebootRequired) {
-        if ($NoRestart) {
-            Write-Warning "A reboot is required; stopping script execution"
-            exit
-        }
-
-        Restart-And-Run
+        Write-Warning "A restart is required before Docker can be installed. Reboot and re-run; config-docker.ps1 does this automatically."
+        exit 3010
     }
 
     #
-    # Unregister the bootstrap task, if it was previously created
+    # Unregister the bootstrap task an older version of this script may have left behind
     #
-    if ((Get-ScheduledTask -TaskName $global:BootstrapTask -ErrorAction SilentlyContinue) -ne $null) {
-        Unregister-ScheduledTask -TaskName $global:BootstrapTask -Confirm:$false
-    }    
-
+    if ($null -ne (Get-ScheduledTask -TaskName $global:LegacyBootstrapTask -ErrorAction SilentlyContinue)) {
+        Unregister-ScheduledTask -TaskName $global:LegacyBootstrapTask -Confirm:$false
+    }
 
     #
     # Install, register, and start Docker
@@ -140,11 +108,7 @@ function Install-ContainerHost {
     }
     else {
         Install-Docker
-        
     }
-
-
-    Remove-Item $global:ErrorFile
 
     Write-Output "Script complete!"
 }
@@ -157,10 +121,10 @@ function Test-Admin() {
     # Get the ID and security principal of the current user account
     $myWindowsID = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $myWindowsPrincipal = new-object System.Security.Principal.WindowsPrincipal($myWindowsID)
-  
+
     # Get the security principal for the Administrator role
     $adminRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
-  
+
     # Check to see if we are currently running "as Administrator"
     if ($myWindowsPrincipal.IsInRole($adminRole)) {
         $global:AdminPriviledges = $true
@@ -171,7 +135,7 @@ function Test-Admin() {
         # We are not running "as Administrator"
         # Exit from the current, unelevated, process
         #
-        throw "You must run this script as administrator"   
+        throw "You must run this script as administrator"
     }
 }
 
@@ -187,17 +151,18 @@ function Install-Docker() {
     param (
         [Parameter()]
         [string]
-        $dockerVersion = "20.10.23",
-        [Parameter()]
-        [string]
         $ContainerBaseImage = "hello-world"
     )
 
-    curl.exe -o docker.zip -LO https://download.docker.com/win/static/stable/x86_64/docker-$dockerVersion.zip 
-    Expand-Archive docker.zip -DestinationPath C:\ -Force
+    $zipPath = Join-Path $env:TEMP "docker-$DockerVersion.zip"
+    curl.exe -o $zipPath -L https://download.docker.com/win/static/stable/x86_64/docker-$DockerVersion.zip
+    if (-not (Test-Path -LiteralPath $zipPath)) {
+        throw "Docker Engine download failed; $zipPath was not created."
+    }
+    Expand-Archive -LiteralPath $zipPath -DestinationPath C:\ -Force
+    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     [Environment]::SetEnvironmentVariable("Path", "$($env:path);C:\docker", [System.EnvironmentVariableTarget]::Machine)
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-    Remove-Item -Path ".\docker.zip" -Force
     [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::Machine)
     dockerd --register-service --service-name $global:DockerServiceName
     if(-not (Test-Path -Path  "$($env:ProgramData)\docker\config\") )
@@ -207,25 +172,25 @@ function Install-Docker() {
         Stop-Docker
     }
     Copy-Item "$($global:ScriptFolder)\daemon.json" "$($env:ProgramData)\docker\config\"
-    
-    Start-Docker 
+
+    Start-Docker
     docker context create win --docker host=tcp://127.0.0.1:2378
     #
     # Waiting for docker to come to steady state
     #
     Wait-Docker
-    Write-Output "setting up  environment variable" 
+    Write-Output "setting up  environment variable"
     [Environment]::SetEnvironmentVariable("WSLENV", "BASH_ENV/u", [System.EnvironmentVariableTarget]::User)
     [Environment]::SetEnvironmentVariable("BASH_ENV", "/etc/bash.bashrc", [System.EnvironmentVariableTarget]::User)
     [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2375", [System.EnvironmentVariableTarget]::User)
     if (-not [string]::IsNullOrEmpty($ContainerBaseImage)) {
         Write-Output "Attempting to pull specified base image: $ContainerBaseImage"
-        docker pull $ContainerBaseImage
+        docker -c win pull $ContainerBaseImage
     }
 
     Write-Output "The following images are present on this machine:"
-    
-    docker images -a | Write-Output
+
+    docker -c win images -a | Write-Output
 
     Write-Output ""
 }
@@ -267,7 +232,7 @@ function Wait-Docker() {
 
             if ($($timeElapsed).TotalMinutes -ge 1) {
                 throw "Docker Daemon did not start successfully within 1 minute."
-            } 
+            }
 
             # Swallow error and try again
             Start-Sleep -sec 1
@@ -278,7 +243,9 @@ function Wait-Docker() {
 
 try {
     Install-ContainerHost
+    exit 0
 }
 catch {
     Write-Error $_
+    exit 1
 }

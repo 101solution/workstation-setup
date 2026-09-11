@@ -12,8 +12,14 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io
 sudo systemctl enable docker.service
 sudo systemctl enable containerd.service
 
-sudo cp /lib/systemd/system/docker.service /etc/systemd/system/
-sudo sed -i 's/\ -H\ fd:\/\//\ -H\ fd:\/\/\ -H\ tcp:\/\/127.0.0.1:2375/g' /etc/systemd/system/docker.service
+# Expose the daemon on TCP for the Windows-side docker CLI. Guarded so a re-run (the orchestrator
+# retries this script if the daemon does not come up) does not append a second -H tcp:// flag.
+if [ ! -f /etc/systemd/system/docker.service ]; then
+    sudo cp /lib/systemd/system/docker.service /etc/systemd/system/
+fi
+if ! grep -q 'tcp://127.0.0.1:2375' /etc/systemd/system/docker.service; then
+    sudo sed -i 's/\ -H\ fd:\/\//\ -H\ fd:\/\/\ -H\ tcp:\/\/127.0.0.1:2375/g' /etc/systemd/system/docker.service
+fi
 sudo systemctl daemon-reload
 echo "current user is $USER"
 sudo usermod -aG docker "$USER"

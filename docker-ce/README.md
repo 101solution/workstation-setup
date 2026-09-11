@@ -1,15 +1,54 @@
 # How to run Docker on Windows and Linux without Docker Desktop
 
-## On Windows
+Two daemons end up running side by side:
 
-_The server may restart once, but the task will continue after reboot_
+- **Linux (WSL2 Ubuntu)** on `tcp://127.0.0.1:2375`. The user-scope `DOCKER_HOST` points here, so a
+  bare `docker` command targets Linux containers.
+- **Windows** on `tcp://127.0.0.1:2378` (and `npipe://`). A `win` context is created for it, so
+  `docker -c win ...` targets Windows containers.
 
-1. Run [Config Workstation script] (https://github.com/101solution/workstation-setup#automate-download-and-run-latest-release)
-1. Run
-   > cd c:/config/workstation/docker-ce; powershell.exe -executionpolicy bypass -file ./config-docker.ps1
+## Prerequisite
 
-## To Test if both docker CE set up properly, please run the following command on Windows Powershell
+Run the [workstation setup](../README.md#quick-start-new-vm) first. It enables WSL2 and registers an
+Ubuntu distro whose default user has passwordless sudo and systemd enabled, both of which the Linux
+installer needs.
 
-> docker run -it hello-world
+## Install
 
-> docker -c win run -it hello-world
+From **Administrator PowerShell**, from any directory:
+
+```powershell
+powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
+```
+
+The script is unattended and resumable, using the same phase machinery as `config-workstation.ps1`
+(state in `%ProgramData%\workstation-setup\docker-ce-state.json`):
+
+1. `containers-feature` — enables the Containers feature (plus Hyper-V on Windows 10/11) without restarting.
+2. `environment` — user-scope `DOCKER_HOST`, `WSLENV` and `BASH_ENV`.
+3. **Reboot gate** — restarts once, only if step 1 needed it, and resumes via a logon task.
+4. `docker-windows` — runs `install-docker-ce.ps1`: Docker static binaries to `C:\docker`, the
+   `docker` service, `daemon.json`, the `win` context.
+5. `docker-linux` — runs `install-docker-ce.sh` inside Ubuntu: Docker CE from the official apt repo,
+   the unit file patched to also listen on 2375, then a WSL restart. Waits for the daemon to answer.
+
+`-resumeMethod ScheduledTask|RunOnce|None`, `-noReboot` (exit 3010 instead of restarting) and `-force`
+(redo everything) work exactly as in the workstation script. Logs go to `logs\docker-ce-config-<date>.log`
+in the repo root.
+
+## Verify
+
+Open a **new** PowerShell window (so the user-scope `DOCKER_HOST` is picked up) and run:
+
+```powershell
+docker run hello-world          # Linux daemon
+docker -c win run hello-world   # Windows daemon
+```
+
+## Notes
+
+- `install-docker-ce.ps1` is a worker driven by the orchestrator. Exit code 0 is success, 3010 means
+  a Windows feature still needs a restart, 1 is failure. Running it on its own never restarts the
+  machine.
+- `linux/systemd/` is the older way of enabling systemd inside WSL2. The workstation setup now writes
+  `systemd=true` to `/etc/wsl.conf` instead, so it should not be needed on a current WSL build.

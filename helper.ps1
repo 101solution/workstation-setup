@@ -322,52 +322,42 @@ Function Install-DockerEngine {
         [string]
         $InstallPath
     )
+    # Idempotent: safe to re-run after a reboot or on an already-configured box.
     if (-not(Test-Path $InstallPath)) {
-        New-Item -Path $InstallPath -ItemType Directory -Force
+        New-Item -Path $InstallPath -ItemType Directory -Force | Out-Null
     }
     $dockerexe = Get-Command -Name docker.exe -ErrorAction SilentlyContinue
-    if (-not(Test-Path $InstallPath)) {
-        New-Item -Path $InstallPath -ItemType Directory -Force
-    }
     if (-not $dockerexe) {
-        $Version="20.10.21"
-        curl.exe -L https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip -o docker.zip
-        Expand-Archive docker.zip -DestinationPath $InstallPath
+        $Version = "20.10.21"
+        $zipPath = Join-Path $env:TEMP "docker-$Version.zip"
+        Write-Output "Downloading Docker Engine $Version..." | timestamp
+        curl.exe -L "https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip" -o $zipPath
+        if (-not (Test-Path -LiteralPath $zipPath)) {
+            throw "Docker Engine download failed; $zipPath was not created."
+        }
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $InstallPath -Force
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    }
+    else {
+        Write-Output "docker.exe already present at $($dockerexe.Source)" | timestamp
     }
     Update-EnvironmentPath -NewPath "$InstallPath\Docker"
     Update-SessionEnvironment
     $dockerexe = Get-Command -Name docker.exe -ErrorAction SilentlyContinue
-    if($dockerexe){
-        dockerd.exe --register-service
-        Start-Service docker
+    if ($dockerexe) {
+        if (-not (Get-Service -Name docker -ErrorAction SilentlyContinue)) {
+            Write-Output "Registering the docker service..." | timestamp
+            dockerd.exe --register-service
+        }
+        $service = Get-Service -Name docker -ErrorAction SilentlyContinue
+        if ($service -and $service.Status -ne 'Running') {
+            Write-Output "Starting the docker service..." | timestamp
+            Start-Service docker
+        }
     }
-}
-Function Install-Stax2AWS-CLI {
-    param (
-        [Parameter()]
-        [string]
-        $InstallPath
-    )
-    Write-Output "Starting to install Stax2AWS cli..."
-    if (-not(Test-Path $InstallPath)) {
-        Write-Output "  Create folder  $InstallPath..."
-        New-Item -Path $InstallPath -ItemType Directory -Force | out-null
+    else {
+        Write-Warning "docker.exe still not found after install; skipping service registration."
     }
-    if (-not(Test-Path "$InstallPath\stax2aws.exe")) {
-        Write-Output "  Download stax2aws cli from github..."
-        $githubRepoUrl = "https://api.github.com/repos/stax-labs/stax2aws-releases/releases"
-        $releases = Invoke-RestMethod -Uri $githubRepoUrl -ErrorAction SilentlyContinue
-        $latestVersion = ($releases | Select-Object -first 1).assets.Where({ $_.browser_download_url.Contains("windows_amd64") }).browser_download_url
-        $fileName = ([uri]$latestVersion).Segments[-1]
-        Invoke-RestMethod -Uri $latestVersion -OutFile "$InstallPath\$fileName"
-        #Using .Net class System.IO.Compression.ZipFile
-        Add-Type -Assembly "System.IO.Compression.Filesystem"
-        [System.IO.Compression.ZipFile]::ExtractToDirectory("$InstallPath\$fileName", "$InstallPath")
-        Remove-Item -LiteralPath "$InstallPath\$fileName" -Force
-    }
-    Write-Output "  Adding path $InstallPath to envrionment path..."
-    Update-EnvironmentPath -NewPath $InstallPath
-    Update-SessionEnvironment
 }
 Function Install-PSModule {
     [CmdletBinding()]
@@ -451,8 +441,13 @@ Function Write-SetupLog {
 
 $script:SetupStateRoot = Join-Path $env:ProgramData 'workstation-setup'
 
+# Each entry script keeps its own state file so their phase names cannot collide: the workstation
+# and runner scripts both have a 'winget' phase, and the Docker CE orchestrator has its own gate.
+# Because helper.ps1 is dot-sourced, the calling script can override this right after sourcing.
+$script:SetupStateFileName = 'setup-state.json'
+
 Function Get-SetupStatePath {
-    return (Join-Path $script:SetupStateRoot 'setup-state.json')
+    return (Join-Path $script:SetupStateRoot $script:SetupStateFileName)
 }
 
 Function Get-SetupState {
@@ -538,6 +533,66 @@ Function Complete-Phase {
     if (-not (Test-PhaseComplete -State $State -Phase $Phase)) {
         $State.completedPhases = @(@($State.completedPhases) + $Phase)
         Save-SetupState -State $State
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Phase runner, shared by every entry script. Contract with the calling script (which this file is
+# dot-sourced into, so `$script:` below resolves to the CALLER's script scope):
+#   $state          - loaded by the caller via Get-SetupState before the first Invoke-SetupPhase
+#   $rebootPending  - set here by Request-PhaseReboot; the caller tests it at its reboot gate
+#   $rebootReason   - first reason given, for the log
+# ---------------------------------------------------------------------------------------------
+$script:rebootPending = $false
+$script:rebootReason = ''
+
+Function Request-PhaseReboot {
+    <#
+        .SYNOPSIS
+            Called from inside a phase body when the phase cannot finish until Windows restarts.
+        .DESCRIPTION
+            A flag rather than a return value, because this repo's `Write-Output ... | timestamp`
+            logging writes to the success stream and would be mixed into a phase's return value.
+    #>
+    param ([Parameter(Mandatory)] [string] $Reason)
+    $script:rebootPending = $true
+    if ([string]::IsNullOrEmpty($script:rebootReason)) {
+        $script:rebootReason = $Reason
+    }
+}
+
+Function Invoke-SetupPhase {
+    <#
+        .SYNOPSIS
+            Runs one phase unless it is already recorded complete, then records it.
+        .DESCRIPTION
+            A phase that throws is logged and left un-recorded, so the next run retries it instead
+            of the whole unattended build aborting. A phase that calls Request-PhaseReboot is also
+            left un-recorded so it re-runs after the restart.
+    #>
+    param (
+        [Parameter(Mandatory)] [string] $Phase,
+        [Parameter(Mandatory)] [scriptblock] $Body
+    )
+    if (Test-PhaseComplete -State $script:state -Phase $Phase) {
+        Write-Output "--- phase '$Phase': already complete, skipping" | timestamp
+        return
+    }
+    Write-Output "" | timestamp
+    Write-Output "--- phase '$Phase': starting" | timestamp
+    $rebootOwedBefore = $script:rebootPending
+    try {
+        & $Body
+        if ($script:rebootPending -and -not $rebootOwedBefore) {
+            Write-Output "--- phase '$Phase': deferred, needs a restart first" | timestamp
+            return
+        }
+        Complete-Phase -State $script:state -Phase $Phase
+        Write-Output "--- phase '$Phase': complete" | timestamp
+    }
+    catch {
+        Write-Warning "--- phase '$Phase' failed: $($_.Exception.Message). It will be retried on the next run."
+        Write-Output $_.ScriptStackTrace | timestamp
     }
 }
 
@@ -781,6 +836,35 @@ Function Request-Reboot {
     exit 0
 }
 
+Function Invoke-RebootGate {
+    <#
+        .SYNOPSIS
+            The single reboot gate. Returns immediately when no phase asked for a restart;
+            otherwise arms the resume mechanism and restarts (or, with -NoReboot, runs -BeforeExit
+            and exits 3010 so an image pipeline can sequence the restart itself).
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $ResumeCommand,
+        [Parameter()] [ValidateSet('ScheduledTask', 'RunOnce', 'None')] [string] $ResumeMethod = 'ScheduledTask',
+        [Parameter()] [string] $WorkingDirectory = $PSScriptRoot,
+        [Parameter()] [switch] $NoReboot,
+        [Parameter()] [scriptblock] $BeforeExit
+    )
+    if (-not $script:rebootPending) {
+        return
+    }
+    Write-Output "" | timestamp
+    Write-Output "All phases that do not need a restart are complete." | timestamp
+    Request-Reboot -State $State -Reason $script:rebootReason -TaskName $TaskName -ResumeCommand $ResumeCommand `
+        -ResumeMethod $ResumeMethod -WorkingDirectory $WorkingDirectory -NoReboot:$NoReboot
+    # Only reached with -NoReboot; Request-Reboot restarts the machine otherwise.
+    if ($BeforeExit) { & $BeforeExit }
+    exit 3010
+}
+
 #endregion
 
 #region Unattended WSL provisioning
@@ -836,15 +920,32 @@ Function Test-WslDistroRegistered {
     return ($distros -match [regex]::Escape($DistroName))
 }
 
-Function Enable-WslFeature {
+Function Test-WindowsClientSku {
     <#
         .SYNOPSIS
-            Enables the two optional features WSL2 needs, without restarting.
-        .OUTPUTS
-            $true when a reboot is required before WSL can be used.
+            True on Windows 10/11 (workstation), false on Windows Server. Decides whether Docker
+            needs Hyper-V isolation: client SKUs cannot run process-isolated Windows containers.
     #>
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
+    return ($null -ne $os -and [int]$os.ProductType -eq 1)
+}
+
+Function Enable-WindowsFeatureSet {
+    <#
+        .SYNOPSIS
+            Enables a set of Windows optional features without restarting.
+        .DESCRIPTION
+            Uses the DISM cmdlets, which work on both client and Server SKUs. A feature that this
+            edition does not offer is warned about and skipped rather than failing the phase.
+        .OUTPUTS
+            $true when at least one feature needs a reboot before it can be used.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string[]] $FeatureNames
+    )
     $rebootRequired = $false
-    foreach ($featureName in @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform')) {
+    foreach ($featureName in $FeatureNames) {
         $feature = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue
         if ($null -eq $feature) {
             Write-Warning "Optional feature $featureName is not available on this edition of Windows."
@@ -861,6 +962,31 @@ Function Enable-WslFeature {
         }
     }
     return $rebootRequired
+}
+
+Function Enable-WslFeature {
+    <#
+        .SYNOPSIS
+            Enables the two optional features WSL2 needs, without restarting.
+        .OUTPUTS
+            $true when a reboot is required before WSL can be used.
+    #>
+    return (Enable-WindowsFeatureSet -FeatureNames @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform'))
+}
+
+Function Enable-ContainerFeature {
+    <#
+        .SYNOPSIS
+            Enables what the Windows Docker daemon needs: the Containers feature, plus Hyper-V on
+            client SKUs, which can only run Windows containers with Hyper-V isolation.
+        .OUTPUTS
+            $true when a reboot is required before dockerd can start.
+    #>
+    $features = @('Containers')
+    if (Test-WindowsClientSku) {
+        $features += 'Microsoft-Hyper-V'
+    }
+    return (Enable-WindowsFeatureSet -FeatureNames $features)
 }
 
 Function Install-WslDistribution {

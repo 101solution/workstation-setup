@@ -151,11 +151,12 @@ throwaway VM is still required before cutting a release.
 - [x] **22. `-installStax2AWS` converted to `[switch]`** (and given the `[Parameter()]` attribute
   the other parameters have). **Scope change from the original finding:** `-enableWSL` was left as
   `[boolean]`. Its default is `$true` and a `[switch]` cannot default to true, so converting it
-  would silently stop installing WSL for every caller that omits the flag.
+  would silently stop installing WSL for every caller that omits the flag. *(The parameter and
+  `Install-Stax2AWS-CLI` were later removed entirely — see G13.)*
 
 ---
 
-## Goal: unattended completion with auto-resume (2026-09-11, in progress)
+## Goal: unattended completion with auto-resume (2026-09-11, code complete, awaiting VM run)
 
 > Requirement: setup must complete **without manual interaction** and **auto-resume if a reboot is
 > needed**.
@@ -201,28 +202,74 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   now log via `Write-SetupLog` (information stream). Verified: `Test-PendingReboot` returns a
   `Boolean` with `@(...).Count -eq 1`.
 
+- [x] **G8. `config-github-runner.ps1` made resumable** (2026-09-11). The phase runner
+  (`Invoke-SetupPhase`, `Request-PhaseReboot`) and a new `Invoke-RebootGate` moved from
+  `config-workstation.ps1` into `helper.ps1` so all entry scripts share them; each script names its
+  own state file via `$script:SetupStateFileName` so their `winget`/`psmodules` phases cannot
+  collide. The runner now has `-resumeMethod`, `-noReboot`, `-force`, and phases
+  `preflight → containers-feature → winget → psmodules → [gate] → docker-engine → done`.
+  **Added beyond the original finding:** a `containers-feature` phase. The old script registered and
+  started `dockerd` without ever enabling the Containers feature (or Hyper-V on a client SKU), which
+  dockerd needs to start; this is also what gives the runner a reason to have a reboot gate at all.
+  `Install-DockerEngine` was made idempotent (skips download / `--register-service` / start when
+  already done, downloads to `%TEMP%`, removes the zip). Unverified on a real machine — see G7.
+
+- [x] **G9. Docker CE reboot path unified** (2026-09-11). `docker-ce/config-docker.ps1` is now the
+  phase-based orchestrator (`containers-feature → environment → [gate] → docker-windows → [gate] →
+  docker-linux → done`, state in `docker-ce-state.json`, `Set-Location $PSScriptRoot` so it runs
+  from anywhere). `install-docker-ce.ps1` lost `Restart-And-Run` and the `ContainerBootstrap` task;
+  it is a worker that exits 0 / 3010 (feature needs restart) / 1, and only touches the old task name
+  to unregister a stale one. This also fixes a real bug in the old flow: when
+  `install-docker-ce.ps1` rebooted, the at-logon task re-ran only *it*, so `config-docker.ps1`'s
+  WSL half was silently never executed. Also fixed while here: the Server branch of
+  `Install-Feature` called `Add-WindowsFeature` even when already installed; `Install-Docker`
+  downloaded to cwd; `install-docker-ce.sh`'s `sed` appended a second `-H tcp://` on every re-run
+  (now `grep`-guarded, and the orchestrator verifies the daemon answers instead of trusting the exit
+  code, which `shutdown -r` destroys).
+
+- [x] **G10. README.md updated** (2026-09-11): parameter table, unattended/reboot section with the
+  `-resumeMethod` table and the image-pipeline example, Docker CE and runner sections, `developer`
+  and `min` rows added to the role table, `cloudEngineer` row corrected (SDK 8, not 7), `runner` row
+  now says prerequisites. `docker-ce/README.md` rewritten for the new orchestrator.
+
+- [x] **G12. `.gitattributes` added** (2026-09-11). Found while doing G9: the repo had none, and with
+  `core.autocrlf=true` (this machine's setting) the `.sh` and `linux/systemd/` scripts check out
+  CRLF on a Windows clone, so `bash ./install-docker-ce.sh` would fail with `$'\r': command not
+  found`. Release zipballs were unaffected (they take the LF index content), so this only bit git
+  clones. `*.sh` and the two namespace scripts are now pinned `eol=lf`.
+
+- [x] **G13. `Install-Stax2AWS-CLI` removed** on request (2026-09-11), together with the
+  `-installStax2AWS` switch and the `stax2aws` phase. A machine that was mid-reboot on the previous
+  version with `-installStax2AWS` in its saved resume command would fail parameter binding on
+  resume; re-run with `-force` in that (unlikely) case.
+
 ### Remaining
 
 - [ ] **G7. Run it end to end on a throwaway VM.** Nothing here has executed on a real machine.
   Verified so far only by: parser checks on all `.ps1`, `bash -n` on both shell scripts, JSON
-  validation, unit tests of the resume-command builder (including quote escaping), and unit tests
-  of the state machine (fresh/reload/single-element-collapse/old-schema/corrupt-file). **This is
-  the only meaningful validation and is required before cutting a release.** Suggested first pass:
-  `.\config-workstation.ps1 -role mrl -resumeMethod None -noReboot` on a fresh VM, confirm exit
-  3010 and the state file, reboot, re-run, confirm it finishes only `wsl-distro`.
-
-- [ ] **G8. `config-github-runner.ps1` is not resumable.** It has its own flow and installs Docker
-  Engine; it should either share the phase/resume machinery or document that it is not unattended.
-
-- [ ] **G9. Unify the Docker CE reboot path.** `docker-ce/install-docker-ce.ps1` still uses its own
-  `ContainerBootstrap` at-logon task rather than `Request-Reboot`/`-resumeMethod`.
-
-- [ ] **G10. Update README.md** with `-resumeMethod`, `-noReboot`, `-force` and the unattended
-  behaviour. Currently only documents `-role`.
+  validation, unit tests of the resume-command builder (including quote escaping), unit tests of
+  the state machine (fresh/reload/single-element-collapse/old-schema/corrupt-file), and — after the
+  move into `helper.ps1` — a two-run scratch test of the shared phase runner (deferred phase
+  re-runs after the "reboot", failed phase is retried, gate exits 3010 with `-noReboot` and passes
+  on the second run). **This is the only meaningful validation and is required before cutting a
+  release.** Now covers three scripts:
+  1. `.\config-workstation.ps1 -role mrl -resumeMethod None -noReboot` on a fresh VM; confirm exit
+     3010 and the state file; reboot; re-run; confirm it finishes only `wsl-distro`.
+  2. `.\docker-ce\config-docker.ps1 -resumeMethod None -noReboot` on that VM; confirm the Containers
+     feature gate, then both `docker run hello-world` and `docker -c win run hello-world`.
+  3. `.\config-github-runner.ps1 -resumeMethod None -noReboot` on a Windows Server VM; confirm the
+     `docker` service starts after the reboot. Specifically confirm the assumption in G8 that
+     dockerd needs the Containers feature to start.
+  Then once more with the default `ScheduledTask` resume to see the task fire and remove itself.
 
 - [ ] **G11. Confirm whether `docker-ce/linux/systemd/` is now redundant.** `Initialize-WslUser`
   writes `systemd=true` to `/etc/wsl.conf`, which is the modern supported way; the older hack is
   still in the repo. Verify on a real WSL2 install before removing anything.
+
+- [ ] **G14. Docker static binary versions are stale.** `install-docker-ce.ps1` pins 20.10.23 and
+  `Install-DockerEngine` pins 20.10.21, both from 2023 and out of support. Bump to a current
+  release from https://download.docker.com/win/static/stable/x86_64/ (and consider one shared
+  constant) once G7 has proven the flow works at all.
 
 ---
 

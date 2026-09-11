@@ -1,0 +1,5 @@
+# Scripts executed inside WSL must stay LF: with core.autocrlf=true a Windows clone would otherwise
+# check them out CRLF and bash fails on every line with "$'\r': command not found".
+*.sh text eol=lf
+docker-ce/linux/systemd/enter-systemd-namespace text eol=lf
+docker-ce/linux/systemd/start-systemd-namespace text eol=lf

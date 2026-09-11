@@ -14,32 +14,44 @@ on a real (preferably throwaway) Windows machine and reading the transcript log.
 
 | Script | Purpose |
 |---|---|
-| `config-workstation.ps1` | Main setup, phase-based and resumable. Params: `-role` (default `mrldev`), `-enableWSL` (default `$true`), `-installStax2AWS` (switch), `-gitUser`, `-gitEmail`, `-defaultWorkFolder` (default `c:\projects`), `-resumeMethod`, `-noReboot`, `-force`, `-taskName` |
-| `config-github-runner.ps1` | Runner box. `-role` default `runner`. Does **not** merge `packages-min.json`, and additionally installs Docker Engine to `$env:UserProfile\tools` |
+| `config-workstation.ps1` | Main setup, phase-based and resumable. Params: `-role` (default `mrldev`), `-enableWSL` (default `$true`), `-gitUser`, `-gitEmail`, `-defaultWorkFolder` (default `c:\projects`), `-resumeMethod`, `-noReboot`, `-force`, `-taskName` |
+| `config-github-runner.ps1` | Runner box, same phase/resume machinery with its own state file `gh-runner-state.json`. `-role` default `runner`. Does **not** merge `packages-min.json`. Enables the Containers feature (plus Hyper-V on client SKUs) before the gate and installs Docker Engine to `$env:UserProfile\tools` after it |
 | `get-latestPackages.ps1` | Bootstrap: downloads the latest non-draft GitHub release zipball into `c:\config`, renames it to `c:\config\workstation`, then runs `config-workstation.ps1 -role <role>` |
-| `docker-ce/config-docker.ps1` | Docker without Docker Desktop: orchestrates the Windows and WSL2 installs. Run it from inside `docker-ce/` |
+| `docker-ce/config-docker.ps1` | Docker without Docker Desktop: phase-based orchestrator of the Windows and WSL2 installs, own state file `docker-ce-state.json`. Sets its own working directory, so it can be run from anywhere |
 
 ```powershell
 # all require Administrator PowerShell
 powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role mrldev
 powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role cloudEngineer -gitUser "Name" -gitEmail "e@x.com"
 .\get-latestPackages.ps1 -role mrl     # fetch + run latest release
-cd docker-ce; powershell.exe -executionpolicy bypass -file .\config-docker.ps1
+powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
+powershell.exe -executionpolicy bypass -file .\config-github-runner.ps1
 ```
 
 ## Unattended execution and reboot resume
 
-`config-workstation.ps1` is structured as named **phases**. Each completed phase is appended to
-`%ProgramData%\workstation-setup\setup-state.json` — deliberately outside the repo, because
-`get-latestPackages.ps1` re-downloading the release would otherwise wipe progress. Every phase is
-idempotent, so re-running the same command is always safe and skips finished work. `-force` clears
-the state and redoes everything.
+All three config scripts are structured as named **phases**, run through `Invoke-SetupPhase` from
+`helper.ps1`. Each completed phase is appended to a state file under
+`%ProgramData%\workstation-setup\` — deliberately outside the repo, because `get-latestPackages.ps1`
+re-downloading the release would otherwise wipe progress. Every phase is idempotent, so re-running
+the same command is always safe and skips finished work. `-force` clears the state and redoes
+everything.
 
-**Phase order is load-bearing.** `wsl-features` runs first and with `-NoRestart`, then all the slow
-work (`winget`, `fonts`, `psmodules`, `stax2aws`, `shell`, `terminal`), then a single reboot gate,
-then `wsl-distro`. The point is that **at most one reboot ever happens** and only WSL distro
-registration is left on the far side of it. Don't reorder phases so that something slow lands after
-the gate.
+Each script has its **own state file**, set by assigning `$script:SetupStateFileName` right after
+dot-sourcing the helper (`setup-state.json`, `gh-runner-state.json`, `docker-ce-state.json`). The
+workstation and runner scripts both have a `winget` phase, so a shared file would make one skip the
+other's work. The phase runner relies on the fact that a dot-sourced function's `$script:` scope *is*
+the caller's: `Invoke-SetupPhase`, `Request-PhaseReboot` and `Invoke-RebootGate` read `$state`,
+`$rebootPending` and `$rebootReason` from the calling script (verified with a scratch test).
+
+**Phase order is load-bearing.** In `config-workstation.ps1`, `wsl-features` runs first and with
+`-NoRestart`, then all the slow work (`winget`, `fonts`, `psmodules`, `shell`, `terminal`), then a
+single reboot gate, then `wsl-distro`. The runner script does the same with `containers-feature`
+before the gate and `docker-engine` after it (dockerd cannot start until the Containers feature is
+live); the Docker CE orchestrator has `containers-feature` and `environment` before the gate,
+`docker-windows` and `docker-linux` after it. The point is that **at most one reboot ever happens**
+and only what genuinely needs the restart is left on the far side of it. Don't reorder phases so that
+something slow lands after the gate.
 
 `-resumeMethod` picks how setup comes back:
 
@@ -96,7 +108,6 @@ of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (req
 - **`packages-min.json` is always merged as the base layer**, unioned with the role file and de-duped
   on `id`/`source`/`override`. The one exception is `-role min`, where the base is used alone.
 - Roles: `mrldev` (default), `mrl`, `cloudEngineer`, `developer`, `runner`, `ce-corp`, `ce-free`, `min`.
-  The README's role table omits `developer` and `min`.
 - `override` is forwarded to `winget install --override`, so its contents are the *underlying
   installer's* flag syntax, not WinGet's — e.g. VS Enterprise's `--add Microsoft.VisualStudio.Workload.*`
   or VS Code's `/mergetasks=addcontextmenufiles,...`.
@@ -105,17 +116,25 @@ of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (req
 
 ## helper.ps1
 
-Dot-sourced by both config scripts. The obsolete Chocolatey and offline-WinGet helpers were removed
-in the 2026-09 cleanup, so what remains is reachable with one exception noted below.
+Dot-sourced by all three config scripts. The obsolete Chocolatey and offline-WinGet helpers were
+removed in the 2026-09 cleanup, and `Install-Stax2AWS-CLI` (with its `-installStax2AWS` switch) was
+removed on request the same month.
 
 Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Update-SessionEnvironment`,
-`Format-Json` (pretty-prints Windows Terminal settings), `Install-Stax2AWS-CLI`, plus `Install-WinGet`
-and `Install-DockerEngine` (runner script only).
+`Format-Json` (pretty-prints Windows Terminal settings), plus `Install-WinGet` and
+`Install-DockerEngine` (runner script only; the latter is idempotent — skips download, service
+registration and start when each is already done). The unattended machinery lives in two regions
+at the bottom: state (`Get-/Save-/Clear-SetupState`, `Complete-Phase`), the phase runner
+(`Invoke-SetupPhase`, `Request-PhaseReboot`, `Invoke-RebootGate`), resume (`Get-ResumeCommand`,
+`Register-ResumeTask`, `Register-ResumeRunOnce`, `Request-Reboot`, `Clear-ResumeHooks`), features
+(`Enable-WindowsFeatureSet`, `Enable-WslFeature`, `Enable-ContainerFeature`, `Test-WindowsClientSku`)
+and WSL provisioning (`Install-WslDistribution`, `Initialize-WslUser`).
 
-`New-WindowsTask` is the exception: it is currently unreferenced because the post-reboot
-continuation calls in both config scripts are commented out. It is kept deliberately — it pairs
-with `Remove-WindowsTask`, which still fires whenever `-taskName` is passed. The only *live* reboot
-continuation is the `ContainerBootstrap` at-logon task in `docker-ce/install-docker-ce.ps1`.
+`New-WindowsTask` and `Remove-WindowsTask` are the one unreferenced pair. They were the pre-2026-09
+post-reboot mechanism (an at-startup task running as SYSTEM), superseded by `Register-ResumeTask`,
+which runs as the invoking user. Every live reboot continuation now goes through `Request-Reboot`;
+the old `ContainerBootstrap` task name survives in `docker-ce/install-docker-ce.ps1` only so a stale
+task from an earlier version gets unregistered.
 
 `Install-WinGetPackage` decides install-vs-upgrade by parsing `winget list` column output through
 `Convert-WingetOutput`. That parser locates the header and data rows by content rather than by fixed
@@ -147,9 +166,13 @@ Transcript logs go to `$PSScriptRoot\logs\` (gitignored), renamed on exit to
 
 ## Docker CE (`docker-ce/`)
 
-`docker-ce/config-docker.ps1` is the orchestrator: it sets env vars, runs `./install-docker-ce.ps1`
-for Windows, then `wsl -- ./install-docker-ce.sh` for Ubuntu. Two daemons run side by side on
-distinct ports, by design:
+`docker-ce/config-docker.ps1` is the orchestrator, phase-based like the workstation script: it
+enables the Containers feature (plus Hyper-V on client SKUs) with `-NoRestart`, sets the user-scope
+env vars, passes the single reboot gate, then runs `./install-docker-ce.ps1` for Windows and
+`wsl -d Ubuntu -- bash ./install-docker-ce.sh` for Ubuntu. `install-docker-ce.ps1` is a worker that
+never restarts the machine itself: exit 0 success, 3010 a feature still needs a restart (the
+orchestrator then runs its gate again), 1 failure. Two daemons run side by side on distinct ports,
+by design:
 
 - **Linux (WSL2) daemon on `tcp://127.0.0.1:2375`** — patched into `/etc/systemd/system/docker.service` by `sed`.
 - **Windows daemon on `tcp://127.0.0.1:2378`** — via `daemon.json` (TCP + `npipe://`).
@@ -157,14 +180,19 @@ distinct ports, by design:
   for 2378, so `docker -c win` targets Windows. Verify both:
   `docker run hello-world` and `docker -c win run hello-world`.
 - `WSLENV`/`BASH_ENV` are set so the Windows-side `DOCKER_HOST` propagates into WSL.
-- `install-docker-ce.sh` ends in `sudo shutdown now -r`, restarting WSL.
-- `docker-ce/linux/systemd/` enables systemd inside WSL2 — a prerequisite, since the Linux installer
-  uses `systemctl`.
+- `install-docker-ce.sh` ends in `sudo shutdown -r now`, restarting WSL. That kills the `wsl.exe`
+  session, so its exit code is meaningless; the `docker-linux` phase instead polls
+  `wsl -- docker version` and throws (so the phase is retried) if the daemon never answers. The
+  script is therefore written to be re-runnable: the `sed` that adds `-H tcp://127.0.0.1:2375` is
+  guarded by a `grep`, otherwise a second run would append a duplicate `-H`.
+- `.gitattributes` pins `*.sh` and the two `linux/systemd/` scripts to LF. Without it a Windows clone
+  with `core.autocrlf=true` checks them out CRLF and bash fails on every line.
+- `docker-ce/linux/systemd/` is the older way of enabling systemd inside WSL2. `Initialize-WslUser`
+  now writes `systemd=true` to `/etc/wsl.conf`, so it is probably redundant (TODO G11).
 
 `docker-ce/install-docker-ce.ps1` resolves `$global:ScriptFolder` from `$PSScriptRoot`, so the
-`daemon.json` copy and the `ContainerBootstrap` reboot-continuation task both work from a git clone
-as well as from a `get-latestPackages.ps1` deploy. (It was previously hardcoded to
-`c:\config\workstation\docker-ce`.)
+`daemon.json` copy works from a git clone as well as from a `get-latestPackages.ps1` deploy. (It was
+previously hardcoded to `c:\config\workstation\docker-ce`.)
 
 ## containers/
 

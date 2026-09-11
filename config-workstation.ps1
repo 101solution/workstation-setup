@@ -48,9 +48,6 @@ param (
     [boolean]
     $enableWSL = $true,
     [Parameter()]
-    [switch]
-    $installStax2AWS,
-    [Parameter()]
     [string]
     $gitUser = "",
     [Parameter()]
@@ -97,59 +94,14 @@ $state = Get-SetupState
 $state.runCount = [int]$state.runCount + 1
 Save-SetupState -State $state
 
-# Set by any phase that cannot finish until Windows has restarted. A flag rather than a return
-# value, because this repo's `Write-Output ... | timestamp` logging writes to the success stream and
-# would otherwise be mixed into a phase's return value.
-$rebootPending = $false
-$rebootReason = ''
+# Invoke-SetupPhase, Request-PhaseReboot and Invoke-RebootGate come from helper.ps1 and are shared
+# with config-github-runner.ps1 and docker-ce/config-docker.ps1. They operate on $state and the
+# $rebootPending / $rebootReason flags in this script's scope.
 
 Write-Output "" | timestamp
 Write-Output "=== Workstation setup: role '$role', run #$($state.runCount), $($state.rebootCount) reboot(s) so far ===" | timestamp
 if (@($state.completedPhases).Count -gt 0) {
     Write-Output "Resuming. Already complete: $((@($state.completedPhases) -join ', '))" | timestamp
-}
-
-Function Request-PhaseReboot {
-    param ([Parameter(Mandatory)] [string] $Reason)
-    $script:rebootPending = $true
-    if ([string]::IsNullOrEmpty($script:rebootReason)) {
-        $script:rebootReason = $Reason
-    }
-}
-
-Function Invoke-SetupPhase {
-    <#
-        .SYNOPSIS
-            Runs one phase unless it is already recorded complete, then records it.
-        .DESCRIPTION
-            A phase that throws is logged and left un-recorded, so the next run retries it instead
-            of the whole unattended build aborting. A phase that calls Request-PhaseReboot is also
-            left un-recorded so it re-runs after the restart.
-    #>
-    param (
-        [Parameter(Mandatory)] [string] $Phase,
-        [Parameter(Mandatory)] [scriptblock] $Body
-    )
-    if (Test-PhaseComplete -State $script:state -Phase $Phase) {
-        Write-Output "--- phase '$Phase': already complete, skipping" | timestamp
-        return
-    }
-    Write-Output "" | timestamp
-    Write-Output "--- phase '$Phase': starting" | timestamp
-    $rebootOwedBefore = $script:rebootPending
-    try {
-        & $Body
-        if ($script:rebootPending -and -not $rebootOwedBefore) {
-            Write-Output "--- phase '$Phase': deferred, needs a restart first" | timestamp
-            return
-        }
-        Complete-Phase -State $script:state -Phase $Phase
-        Write-Output "--- phase '$Phase': complete" | timestamp
-    }
-    catch {
-        Write-Warning "--- phase '$Phase' failed: $($_.Exception.Message). It will be retried on the next run."
-        Write-Output $_.ScriptStackTrace | timestamp
-    }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -179,7 +131,6 @@ $packageConfigBase = Get-Content $PSScriptRoot\packages-min.json | ConvertFrom-J
 if ($role -ne 'min') {
     $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
 }
-$userToolsPath = "$env:UserProfile\tools"
 
 # ---------------------------------------------------------------------------------------------
 # Phase: WSL optional features. Deliberately FIRST and -NoRestart, so the restart it may demand is
@@ -236,15 +187,6 @@ Invoke-SetupPhase -Phase 'psmodules' -Body {
     $psModules = ($packageConfigBase.powershellModule + $packageConfig.powershellModule) | Select-Object -Unique -Property name
     foreach ($module in $psModules) {
         Install-PSModule -PsModuleName $module.name
-    }
-}
-
-Invoke-SetupPhase -Phase 'stax2aws' -Body {
-    if ($installStax2AWS) {
-        Install-Stax2AWS-CLI -InstallPath $userToolsPath
-    }
-    else {
-        Write-Output "Skipping Stax2AWS CLI (pass -installStax2AWS to include it)." | timestamp
     }
 }
 
@@ -318,16 +260,11 @@ Invoke-SetupPhase -Phase 'terminal' -Body {
 # ---------------------------------------------------------------------------------------------
 # The single reboot gate. Everything above is done; only the WSL distro is left.
 # ---------------------------------------------------------------------------------------------
-if ($rebootPending) {
-    Write-Output "" | timestamp
-    Write-Output "All phases that do not need a restart are complete." | timestamp
-    Request-Reboot -State $state -Reason $rebootReason -TaskName $taskName -ResumeCommand $resumeCommand `
-        -ResumeMethod $resumeMethod -WorkingDirectory $PSScriptRoot -NoReboot:$noReboot
-    # Only reached with -noReboot; Request-Reboot restarts the machine otherwise.
-    $null = Stop-Transcript
-    Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
-    exit 3010
-}
+Invoke-RebootGate -State $state -TaskName $taskName -ResumeCommand $resumeCommand -ResumeMethod $resumeMethod `
+    -WorkingDirectory $PSScriptRoot -NoReboot:$noReboot -BeforeExit {
+        $null = Stop-Transcript
+        Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
+    }
 
 # ---------------------------------------------------------------------------------------------
 # Phase: register the WSL distro and provision its user without the interactive first-run setup.
