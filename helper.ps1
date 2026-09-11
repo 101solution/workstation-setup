@@ -1,52 +1,5 @@
 filter timestamp { "$(Get-Date -Format o): $_" }
-function Install-Choco {
-    $chocoCmd = Get-Command -Name choco.exe -ErrorAction SilentlyContinue 
-    if ($chocoCmd) {
-        $chocoVersion = choco -v
-        Write-Output "Chocolatery has already installed, version is $chocoVersion" | timestamp
-    }
-    else {
-        Write-Output "Installing Chocolatery"  | timestamp
-        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-        Update-SessionEnvironment
-        $chocoCmd = Get-Command -Name choco.exe -ErrorAction SilentlyContinue
-        if ($chocoCmd) {
-            $chocoVersion = choco -v
-            Write-Output "Chocolatery is installed, version is $chocoVersion"  | timestamp
-        }
-    }
-}
 
-function Install-ChocoPackage {
-    param (
-        [string] $packageName,
-        [string] $additionalParameters,
-        [switch] $force
-    )
-    Write-Output "Installing package $packageName..." | timestamp
-    if ($force) {
-        Write-Output "    Installing package $packageName with -force"  | timestamp
-        choco install $packageName -y --force --force-dependencies $additionalParameters
-    }
-    else {
-        $nameCompare = [System.StringComparison]::OrdinalIgnoreCase
-        $packageInstalled = choco list -lo | Where-object { $_.StartsWith("$packageName ", $nameCompare) }
-        if ($packageInstalled) {
-            $packageOutdated = choco outdated | Where-object { $_.StartsWith("$packageName|", $nameCompare) } 
-            if ($packageOutdated) {
-                Write-Output "    Package $packageName is already install but outdated, upgrading..."  | timestamp
-                choco upgrade $packageName -y $additionalParameters
-            }
-            else {
-                Write-Output "    Package $packageName is already install with latest version"  | timestamp
-            }
-        }
-        else {
-            Write-Output "    Installing package $packageName..."  | timestamp
-            choco install $packageName -y $additionalParameters
-        }
-    }
-}
 
 Function New-WindowsTask {
     [CmdletBinding()]
@@ -86,24 +39,6 @@ Function Remove-WindowsTask {
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
         Write-Output "Removed Scheduled Task - $TaskName"  | timestamp
     }
-}
-Function Test-VMRestart {
-    $pendingReboot = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing' | Select-Object 'RebootPending' -ExpandProperty 'RebootPending' -ErrorAction SilentlyContinue
-    if ($null -ne $pendingReboot) {
-        return $true
-    }
-    
-    $requireReboot = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update' | Select-Object 'RebootRequired' -ExpandProperty 'RebootRequired' -ErrorAction SilentlyContinue
-    if ($null -ne $requireReboot) {
-        return $true
-    }
-
-    $needReboot = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'  | Select-Object 'PendingFileRenameOperations' -ExpandProperty 'PendingFileRenameOperations' -ErrorAction SilentlyContinue
-    if ($null -ne $needReboot) {
-        return $true
-    }
-    
-    return $false
 }
 Function Install-Fonts {
     [CmdletBinding()]
@@ -145,7 +80,6 @@ Function Get-EnvironmentVariable {
     )
 
     # Do not log function call, it may expose variable names
-    ## Called from chocolateysetup.psm1 - wrap any Write-Host in try/catch
 
     [string] $MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME = "SYSTEM\CurrentControlSet\Control\Session Manager\Environment\";
     [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME)
@@ -223,24 +157,6 @@ Function Update-SessionEnvironment {
     if ($architecture) { $env:PROCESSOR_ARCHITECTURE = $architecture; }
 }
 
-Function Install-WinGetOffline {
-    $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-    if (-not $wingetCmd) {
-        
-        if (-not (Get-AppPackage Microsoft.UI.Xaml.2.7 | Where-Object { $_.version -eq "7.2203.17001.0" -and ($_.Architecture -eq "X64") })) {
-            Write-Output "  Installing Microsoft.UI.Xaml.2.7 using offline mode..."
-            Add-AppxPackage $PSScriptRoot\winget\Microsoft.UI.Xaml.2.7_7.2203.17001.0_x64__8wekyb3d8bbwe.Appx
-        }
-        if (-not (Get-AppPackage Microsoft.VCLibs.140.00.UWPDesktop | Where-Object { $_.version -eq "14.0.30704.0" -and ($_.Architecture -eq "X64") })) {
-            Write-Output "  Installing Microsoft.VCLibs.140.00.UWPDesktop using offline mode..."
-            Add-AppxPackage $PSScriptRoot\winget\Microsoft.VCLibs.140.00.UWPDesktop_14.0.30704.0_x64__8wekyb3d8bbwe.Appx
-        }
-        Write-Output "Installing WinGet (Microsoft.DesktopAppInstaller) using offline mode..."
-        Add-AppxPackage $PSScriptRoot\winget\Microsoft.DesktopAppInstaller_2022.610.123.0_neutral___8wekyb3d8bbwe.Msixbundle
-        Update-SessionEnvironment
-    }
-    
-}
 Function Install-WinGet {
     #Install the latest package from GitHub
     [cmdletbinding(SupportsShouldProcess)]
@@ -260,7 +176,7 @@ Function Install-WinGet {
     if ((-not $wingetCmd) -or $Upgrade) {
         Write-Output "  Winget is not installed, install now..." | timestamp
 
-        if ($Iscoreclr -AND ($PSVersionTable.PSVersion -le 7.2)) {
+        if ($IsCoreCLR -and ($PSVersionTable.PSVersion -lt [version]"7.2")) {
             Write-Warning "If running this command in PowerShell 7, you need at least version 7.2."
             return
         }
@@ -282,7 +198,7 @@ Function Install-WinGet {
             }
 
         Try {
-            If ($pscmdlet.ShouldProcess($appx, "Downloading asset")) {
+            If ($pscmdlet.ShouldProcess("Microsoft.DesktopAppInstaller", "Download and install winget")) {
                 Write-Output "  Installing winget cli..." | timestamp
                 Add-AppxPackage -Path https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle -ErrorAction Stop
 
@@ -308,18 +224,47 @@ function Convert-WingetOutput {
         [string]
         $packageId
     )
-    if ($wingetOutput -and ($wingetOutput.Count -ge 3)) {
-        $idIndex = $wingetOutput[0].IndexOf("Id")
-        $appIndex = $wingetOutput[2].IndexOf($packageId)
-        if ($idIndex -ge 0 -and $appIndex -ge 0) {
-            $header = $wingetOutput[0].Substring($idIndex) -replace '\s+', ","
-            $data = $wingetOutput[2].Substring($appIndex) -replace '\s+', ","
-            return  @($header, $data) | ConvertFrom-Csv
-        }
-    }
-    else {
+    if (-not $wingetOutput) {
         return $null
     }
+
+    # Locate the header and data rows by content rather than by fixed index. winget prepends a
+    # variable number of progress/spinner lines, so the header is not reliably line 0 and the
+    # matching package is not reliably line 2.
+    $headerLine = $null
+    $headerIndex = -1
+    for ($i = 0; $i -lt $wingetOutput.Count; $i++) {
+        $line = $wingetOutput[$i]
+        if ($line -and ($line.IndexOf("Id") -ge 0) -and ($line.IndexOf("Version") -ge 0)) {
+            $headerLine = $line
+            $headerIndex = $i
+            break
+        }
+    }
+    if ($null -eq $headerLine) {
+        return $null
+    }
+
+    $dataLine = $null
+    for ($i = $headerIndex + 1; $i -lt $wingetOutput.Count; $i++) {
+        if ($wingetOutput[$i] -and ($wingetOutput[$i].IndexOf($packageId) -ge 0)) {
+            $dataLine = $wingetOutput[$i]
+            break
+        }
+    }
+    if ($null -eq $dataLine) {
+        return $null
+    }
+
+    $idIndex = $headerLine.IndexOf("Id")
+    $appIndex = $dataLine.IndexOf($packageId)
+    if ($idIndex -lt 0 -or $appIndex -lt 0) {
+        return $null
+    }
+
+    $header = $headerLine.Substring($idIndex) -replace '\s+', ","
+    $data = $dataLine.Substring($appIndex) -replace '\s+', ","
+    return @($header, $data) | ConvertFrom-Csv
 }
 function Install-WingetPackage {
     param (
@@ -369,41 +314,6 @@ Function Update-EnvironmentPath {
             [Environment]::SetEnvironmentVariable('Path', $persistedPaths -join ';', $containerType)
         }           
     }
-}
-Function Install-Kubectl {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [string]
-        $InstallPath
-    )
-    if (-not(Test-Path $InstallPath)) {
-        New-Item -Path $InstallPath -ItemType Directory -Force
-    }
-    $kubrctlCmd = Get-Command -Name kubectl.exe -ErrorAction SilentlyContinue
-    if (-not(Test-Path $InstallPath)) {
-        New-Item -Path $InstallPath -ItemType Directory -Force
-    }
-    $latestVersion = Invoke-WebRequest -Uri "https://dl.k8s.io/release/stable.txt"
-    $installedVersion = "0.0.0.0"
-    if ($kubrctlCmd) {
-        $kubeVersion = kubectl version --output=json | ConvertFrom-Json
-        if ($kubeVersion) {
-            $installedVersion = $kubeVersion.ClientVersion.gitCommit
-        }
-        if ($installedVersion -eq $latestVersion) {
-            Write-Output "Removing old version of Kubectl ..."
-            Remove-Item -LiteralPath $InstallPath\kubectl.exe -Force
-        }
-    }
-    if ($installedVersion -eq $latestVersion) {
-        Write-Output "Downloading Kubectl $latestVersion ..."
-        Invoke-WebRequest -Uri "https://dl.k8s.io/release/$latestVersion/bin/windows/amd64/kubectl.exe" -OutFile $InstallPath\kubectl.exe
-
-        Update-EnvironmentPath -NewPath $InstallPath
-        Update-SessionEnvironment
-    }
-
 }
 Function Install-DockerEngine {
     [CmdletBinding()]
@@ -470,8 +380,19 @@ Function Install-PSModule {
     $installedModule = Get-InstalledModule -Name $PsModuleName -ErrorAction SilentlyContinue
 
     if ($null -eq $installedModule) {
+        # Get-InstalledModule only sees modules installed via PowerShellGet, so modules that ship
+        # in-box (PSReadLine) always look absent and get reinstalled on every run. Check the module
+        # path as well, and pass -SkipPublisherCheck when we do install: the in-box copy is signed by
+        # a different Microsoft authority than the gallery copy, which otherwise blocks the install.
+        $availableModule = Get-Module -Name $PsModuleName -ListAvailable -ErrorAction SilentlyContinue |
+            Sort-Object Version -Descending | Select-Object -First 1
+        $galleryModule = Find-Module -Name $PsModuleName -Repository PSGallery -ErrorAction SilentlyContinue
+        if ($availableModule -and $galleryModule -and ($availableModule.Version -ge $galleryModule.Version)) {
+            Write-Output "  PS Module $PsModuleName $($availableModule.Version) is already present." | timestamp
+            return
+        }
         Write-Output "  Installing PS Module $PsModuleName..."  | timestamp
-        Install-Module -Name $PsModuleName -Repository PSGallery -Force
+        Install-Module -Name $PsModuleName -Repository PSGallery -Force -AllowClobber -SkipPublisherCheck
     }
     else {
         $latestModule = Find-Module -Name $PsModuleName -Repository PSGallery
@@ -499,3 +420,572 @@ Function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
         $line
     }) -Join "`n"
 }
+
+#region Unattended execution and reboot resume
+# ---------------------------------------------------------------------------------------------
+# NOTE ON LOGGING INSIDE VALUE-RETURNING FUNCTIONS
+# The `Write-Output "..." | timestamp` idiom used elsewhere in this repo writes to the SUCCESS
+# stream, so inside a function that also returns a value the log lines become part of the return
+# value. `return $false` after two log lines yields @('msg','msg',$false), and `if (Fn)` on a
+# non-empty array is TRUE - which would make Enable-WslFeature demand a reboot forever. Functions
+# below whose return value is tested therefore log via Write-SetupLog, which uses the information
+# stream (still captured by Start-Transcript) and leaves the success stream clean.
+# ---------------------------------------------------------------------------------------------
+
+Function Write-SetupLog {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, Position = 0)]
+        [AllowEmptyString()]
+        [string] $Message
+    )
+    Write-Information "$(Get-Date -Format o): $Message" -InformationAction Continue
+}
+
+# ---------------------------------------------------------------------------------------------
+# Setup runs in named phases. Completed phases are recorded in a state file outside the repo so a
+# re-download by get-latestPackages.ps1 cannot lose progress. When a step needs a reboot, the state
+# is flushed, a resume scheduled task is registered, and the machine restarts; on the next logon the
+# task re-invokes this script with the original arguments and every completed phase is skipped.
+# ---------------------------------------------------------------------------------------------
+
+$script:SetupStateRoot = Join-Path $env:ProgramData 'workstation-setup'
+
+Function Get-SetupStatePath {
+    return (Join-Path $script:SetupStateRoot 'setup-state.json')
+}
+
+Function Get-SetupState {
+    <#
+        .SYNOPSIS
+            Loads the resume state, or returns a fresh one. Never throws - a corrupt state file
+            must degrade to "start from the beginning", not abort an unattended build.
+    #>
+    $defaults = [ordered]@{
+        completedPhases = @()
+        rebootCount     = 0
+        runCount        = 0
+        startedUtc      = (Get-Date).ToUniversalTime().ToString('o')
+        lastRunUtc      = $null
+        resumeCommand   = $null
+        resumeMethod    = $null
+    }
+
+    $state = $null
+    $statePath = Get-SetupStatePath
+    if (Test-Path -LiteralPath $statePath) {
+        try {
+            $state = Get-Content -LiteralPath $statePath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Resume state at $statePath is unreadable ($($_.Exception.Message)); starting from the first phase."
+            $state = $null
+        }
+    }
+
+    if ($null -eq $state) {
+        return [pscustomobject]$defaults
+    }
+
+    # Normalise the shape: a state file written by an earlier version of this script will be
+    # missing newer fields, and assigning to an absent property on a PSCustomObject throws.
+    foreach ($key in $defaults.Keys) {
+        if ($null -eq $state.PSObject.Properties[$key]) {
+            $state | Add-Member -NotePropertyName $key -NotePropertyValue $defaults[$key] -Force
+        }
+    }
+    # ConvertFrom-Json collapses a single-element array to a scalar; force it back.
+    $state.completedPhases = @($state.completedPhases | Where-Object { $_ })
+    return $state
+}
+
+Function Save-SetupState {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        $State
+    )
+    if (-not (Test-Path -LiteralPath $script:SetupStateRoot)) {
+        New-Item -Path $script:SetupStateRoot -ItemType Directory -Force | Out-Null
+    }
+    $State.lastRunUtc = (Get-Date).ToUniversalTime().ToString('o')
+    $State | ConvertTo-Json -Depth 10 | Out-File -LiteralPath (Get-SetupStatePath) -Encoding utf8 -Force
+}
+
+Function Clear-SetupState {
+    $statePath = Get-SetupStatePath
+    if (Test-Path -LiteralPath $statePath) {
+        Remove-Item -LiteralPath $statePath -Force
+        Write-Output "Cleared resume state $statePath" | timestamp
+    }
+}
+
+Function Test-PhaseComplete {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [string] $Phase
+    )
+    return (@($State.completedPhases) -contains $Phase)
+}
+
+Function Complete-Phase {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [string] $Phase
+    )
+    if (-not (Test-PhaseComplete -State $State -Phase $Phase)) {
+        $State.completedPhases = @(@($State.completedPhases) + $Phase)
+        Save-SetupState -State $State
+    }
+}
+
+Function Test-PendingReboot {
+    <#
+        .SYNOPSIS
+            True when Windows has a reboot outstanding. Installing on top of a pending reboot is a
+            common cause of half-failed MSI/feature installs, so setup drains it first.
+    #>
+    $pendingKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Services\Pending'
+    )
+    foreach ($key in $pendingKeys) {
+        if (Test-Path -LiteralPath $key) {
+            Write-SetupLog "  Pending reboot signalled by $key"
+            return $true
+        }
+    }
+
+    $sessionManager = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' `
+        -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue
+    if ($sessionManager -and $sessionManager.PendingFileRenameOperations) {
+        Write-SetupLog "  Pending reboot signalled by PendingFileRenameOperations"
+        return $true
+    }
+
+    $activeName = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' `
+        -Name 'ComputerName' -ErrorAction SilentlyContinue
+    $pendingName = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' `
+        -Name 'ComputerName' -ErrorAction SilentlyContinue
+    if ($activeName -and $pendingName -and ($activeName.ComputerName -ne $pendingName.ComputerName)) {
+        Write-SetupLog "  Pending reboot signalled by a pending computer rename"
+        return $true
+    }
+
+    return $false
+}
+
+Function Get-ResumeCommand {
+    <#
+        .SYNOPSIS
+            Rebuilds the command line that re-invokes setup after a reboot.
+        .DESCRIPTION
+            Uses -Command rather than -File so PowerShell parses real argument syntax: with -File
+            every argument arrives as a string and a [boolean] parameter such as -enableWSL would
+            bind the literal text '$true' instead of a boolean.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $ScriptPath,
+        [Parameter(Mandatory)] [hashtable] $BoundParameters
+    )
+    $arguments = New-Object System.Collections.Generic.List[string]
+    $arguments.Add("& '$($ScriptPath.Replace("'", "''"))'")
+    foreach ($entry in $BoundParameters.GetEnumerator() | Sort-Object Key) {
+        $name = $entry.Key
+        $value = $entry.Value
+        if ($value -is [System.Management.Automation.SwitchParameter]) {
+            if ($value.IsPresent) { $arguments.Add("-$name") }
+        }
+        elseif ($value -is [bool]) {
+            $arguments.Add("-$name `$$($value.ToString().ToLowerInvariant())")
+        }
+        else {
+            $arguments.Add("-$name '$([string]$value -replace "'", "''")'")
+        }
+    }
+    return ($arguments -join ' ')
+}
+
+Function Register-ResumeTask {
+    <#
+        .SYNOPSIS
+            Registers the post-reboot continuation task.
+        .DESCRIPTION
+            The task runs as the invoking user, elevated, at that user's logon. It must NOT run as
+            SYSTEM: setup writes per-user artefacts (the PowerShell profile, .gitconfig, the Windows
+            Terminal settings, the Oh My Posh theme) and under SYSTEM those would land in
+            C:\Windows\System32\config\systemprofile instead of the real profile.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $ResumeCommand,
+        [Parameter()] [string] $WorkingDirectory = $PSScriptRoot
+    )
+    $runAsUser = "$($env:USERDOMAIN)\$($env:USERNAME)"
+    $argumentString = "-ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command `"$ResumeCommand`""
+
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argumentString -WorkingDirectory $WorkingDirectory
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $runAsUser
+    $principal = New-ScheduledTaskPrincipal -UserId $runAsUser -LogonType Interactive -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::FromHours(6)) -RestartCount 2 `
+        -RestartInterval ([TimeSpan]::FromMinutes(5))
+
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal `
+        -Settings $settings -Description 'Resumes workstation setup after a reboot' -Force | Out-Null
+    Write-Output "Registered resume task '$TaskName' for $runAsUser at logon" | timestamp
+}
+
+Function Unregister-ResumeTask {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $TaskName
+    )
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -ne $task) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+        Write-Output "Removed resume task '$TaskName'" | timestamp
+    }
+}
+
+Function Register-ResumeRunOnce {
+    <#
+        .SYNOPSIS
+            Arms resume through the registry instead of the task scheduler.
+        .DESCRIPTION
+            For environments where creating scheduled tasks is restricted or audited. The trade-off
+            is real: HKLM RunOnce entries execute with the logging-on user's filtered (non-elevated)
+            token, so the entry has to relaunch through Start-Process -Verb RunAs to regain admin,
+            which costs exactly one UAC consent. RunOnce deletes its own value once it fires, so
+            there is nothing left behind to clean up.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $Name,
+        [Parameter(Mandatory)] [string] $ResumeCommand,
+        [Parameter()] [string] $WorkingDirectory = $PSScriptRoot
+    )
+    $runOnceKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+    if (-not (Test-Path -LiteralPath $runOnceKey)) {
+        New-Item -Path $runOnceKey -Force | Out-Null
+    }
+    # -EncodedCommand sidesteps the multiple layers of quoting between the registry value, the
+    # outer shell and the elevated child process.
+    $inner = "Set-Location '$($WorkingDirectory.Replace("'", "''"))'; $ResumeCommand"
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($inner))
+    $elevateArgs = "'-ExecutionPolicy','Bypass','-NoProfile','-EncodedCommand','$encoded'"
+    $value = "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command " +
+             "`"Start-Process powershell.exe -Verb RunAs -ArgumentList $elevateArgs`""
+    Set-ItemProperty -Path $runOnceKey -Name $Name -Value $value -Force
+    Write-Output "Armed RunOnce resume entry '$Name' (expect one UAC prompt after logon)" | timestamp
+}
+
+Function Unregister-ResumeRunOnce {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $Name
+    )
+    $runOnceKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+    if (Get-ItemProperty -Path $runOnceKey -Name $Name -ErrorAction SilentlyContinue) {
+        Remove-ItemProperty -Path $runOnceKey -Name $Name -Force -ErrorAction SilentlyContinue
+        Write-Output "Removed RunOnce resume entry '$Name'" | timestamp
+    }
+}
+
+Function Clear-ResumeHooks {
+    <#
+        .SYNOPSIS
+            Removes every resume mechanism, whichever one was armed.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $Name
+    )
+    Unregister-ResumeTask -TaskName $Name
+    Unregister-ResumeRunOnce -Name $Name
+}
+
+Function Request-Reboot {
+    <#
+        .SYNOPSIS
+            Flushes state, arms the chosen resume mechanism and restarts.
+        .PARAMETER ResumeMethod
+            ScheduledTask - elevated and fully unattended; the only option that needs no human input.
+            RunOnce       - no scheduled task; costs one UAC consent after logon.
+            None          - arms nothing. Re-run the same command afterwards; completed phases are
+                            skipped, so it resumes exactly where it stopped.
+        .DESCRIPTION
+            With -NoReboot it records what is owed and returns without restarting, so image
+            pipelines can sequence their own restart.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [string] $Reason,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $ResumeCommand,
+        [Parameter()] [ValidateSet('ScheduledTask', 'RunOnce', 'None')] [string] $ResumeMethod = 'ScheduledTask',
+        [Parameter()] [string] $WorkingDirectory = $PSScriptRoot,
+        [Parameter()] [switch] $NoReboot
+    )
+    $State.rebootCount = [int]$State.rebootCount + 1
+    $State.resumeCommand = $ResumeCommand
+    $State.resumeMethod = $ResumeMethod
+    Save-SetupState -State $State
+
+    switch ($ResumeMethod) {
+        'ScheduledTask' {
+            try {
+                Register-ResumeTask -TaskName $TaskName -ResumeCommand $ResumeCommand -WorkingDirectory $WorkingDirectory
+            }
+            catch {
+                # Task creation can be blocked by policy. Degrade rather than lose the resume entirely.
+                Write-Warning "Could not register the resume task ($($_.Exception.Message)). Falling back to RunOnce."
+                Register-ResumeRunOnce -Name $TaskName -ResumeCommand $ResumeCommand -WorkingDirectory $WorkingDirectory
+            }
+        }
+        'RunOnce' {
+            Register-ResumeRunOnce -Name $TaskName -ResumeCommand $ResumeCommand -WorkingDirectory $WorkingDirectory
+        }
+        'None' {
+            Write-Output "No resume mechanism armed (-resumeMethod None)." | timestamp
+        }
+    }
+
+    Write-Output "" | timestamp
+    Write-Output "REBOOT REQUIRED: $Reason" | timestamp
+    Write-Output "  Completed phases so far: $((@($State.completedPhases) -join ', '))" | timestamp
+    Write-Output "  Reboot number: $($State.rebootCount)" | timestamp
+    Write-Output "  Resume method: $ResumeMethod" | timestamp
+    if ($ResumeMethod -eq 'None') {
+        Write-Output "  To finish, re-run after the reboot:" | timestamp
+        Write-Output "    $ResumeCommand" | timestamp
+    }
+
+    if ($NoReboot) {
+        Write-Warning "-noReboot was supplied, so the machine will not be restarted."
+        return
+    }
+
+    Write-Output "Restarting now." | timestamp
+    try { $null = Stop-Transcript } catch { }
+    Restart-Computer -Force
+    # Restart-Computer is asynchronous; stop doing work while Windows tears the session down.
+    Start-Sleep -Seconds 120
+    exit 0
+}
+
+#endregion
+
+#region Unattended WSL provisioning
+
+Function Test-WslInstallSupportsFlag {
+    <#
+        .SYNOPSIS
+            Feature-detects a `wsl --install` flag, because the available flags depend on whether
+            the inbox stub or the Microsoft Store build of WSL is servicing the command.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $Flag
+    )
+    try {
+        $previousEncoding = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
+        $helpText = (& wsl.exe --install --help 2>&1) -join "`n"
+        [Console]::OutputEncoding = $previousEncoding
+        return ($helpText -match [regex]::Escape($Flag))
+    }
+    catch {
+        return $false
+    }
+}
+
+Function Get-WslDistroState {
+    <#
+        .SYNOPSIS
+            Returns the registered-distro list as plain text, or an empty string when WSL is absent.
+            wsl.exe emits UTF-16LE, which shows up as text interleaved with NULs unless the console
+            encoding is switched first.
+    #>
+    try {
+        $previousEncoding = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
+        $output = (& wsl.exe --list --quiet 2>&1) -join "`n"
+        [Console]::OutputEncoding = $previousEncoding
+        if ($LASTEXITCODE -ne 0) { return "" }
+        return $output
+    }
+    catch {
+        return ""
+    }
+}
+
+Function Test-WslDistroRegistered {
+    [CmdletBinding()]
+    param (
+        [Parameter()] [string] $DistroName = 'Ubuntu'
+    )
+    $distros = Get-WslDistroState
+    return ($distros -match [regex]::Escape($DistroName))
+}
+
+Function Enable-WslFeature {
+    <#
+        .SYNOPSIS
+            Enables the two optional features WSL2 needs, without restarting.
+        .OUTPUTS
+            $true when a reboot is required before WSL can be used.
+    #>
+    $rebootRequired = $false
+    foreach ($featureName in @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform')) {
+        $feature = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue
+        if ($null -eq $feature) {
+            Write-Warning "Optional feature $featureName is not available on this edition of Windows."
+            continue
+        }
+        if ($feature.State -eq 'Enabled') {
+            Write-SetupLog "  Feature $featureName is already enabled"
+            continue
+        }
+        Write-SetupLog "  Enabling feature $featureName..."
+        $result = Enable-WindowsOptionalFeature -Online -FeatureName $featureName -All -NoRestart -WarningAction SilentlyContinue
+        if ($result.RestartNeeded) {
+            $rebootRequired = $true
+        }
+    }
+    return $rebootRequired
+}
+
+Function Install-WslDistribution {
+    <#
+        .SYNOPSIS
+            Registers a WSL distro without triggering its interactive first-run setup.
+        .DESCRIPTION
+            A plain `wsl --install -d Ubuntu` launches the distro, whose OOBE blocks on a UNIX
+            username and password prompt - fatal for an unattended build. `--no-launch` avoids that
+            on Store WSL; on older builds the per-distro launcher's `install --root` is the
+            equivalent non-interactive entry point.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter()] [string] $DistroName = 'Ubuntu'
+    )
+    if (Test-WslDistroRegistered -DistroName $DistroName) {
+        Write-SetupLog "  Distro $DistroName is already registered"
+        return $true
+    }
+
+    if (Test-WslInstallSupportsFlag -Flag '--no-launch') {
+        Write-SetupLog "  Installing $DistroName with --no-launch (no first-run prompt)..."
+        & wsl.exe --install --distribution $DistroName --no-launch
+        if ($LASTEXITCODE -eq 0 -and (Test-WslDistroRegistered -DistroName $DistroName)) {
+            return $true
+        }
+        Write-Warning "wsl --install --no-launch exited with $LASTEXITCODE; trying the distro launcher instead."
+    }
+    else {
+        Write-SetupLog "  This build of wsl.exe has no --no-launch flag; using the distro launcher."
+    }
+
+    # Fallback for older WSL: the appx launcher installs non-interactively with a root-only account.
+    foreach ($launcher in @('ubuntu.exe', 'ubuntu2404.exe', 'ubuntu2204.exe')) {
+        $launcherCommand = Get-Command -Name $launcher -ErrorAction SilentlyContinue
+        if ($launcherCommand) {
+            Write-SetupLog "  Registering $DistroName via $launcher install --root..."
+            & $launcherCommand.Source install --root
+            if (Test-WslDistroRegistered -DistroName $DistroName) {
+                return $true
+            }
+        }
+    }
+
+    Write-Warning "Could not register $DistroName without user interaction. Other setup phases have still completed."
+    return $false
+}
+
+Function Initialize-WslUser {
+    <#
+        .SYNOPSIS
+            Creates the default WSL user and enables systemd, entirely from the Windows side.
+        .DESCRIPTION
+            Runs as root via --user root so the distro's interactive OOBE never executes. The user
+            gets passwordless sudo because the Docker CE and systemd scripts in this repo are full
+            of unattended `sudo` calls that would otherwise block on a password prompt. systemd is
+            switched on in /etc/wsl.conf since docker-ce/linux/install-docker-ce.sh drives systemctl.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter()] [string] $DistroName = 'Ubuntu',
+        [Parameter()] [string] $UserName = $env:USERNAME.ToLowerInvariant()
+    )
+    if (-not (Test-WslDistroRegistered -DistroName $DistroName)) {
+        Write-Warning "Distro $DistroName is not registered; skipping user provisioning."
+        return $false
+    }
+
+    # A Windows account name can contain characters that are illegal in a POSIX user name.
+    $linuxUser = ($UserName -replace '[^a-z0-9_-]', '')
+    if ([string]::IsNullOrWhiteSpace($linuxUser)) { $linuxUser = 'developer' }
+    if ($linuxUser -match '^[0-9]') { $linuxUser = "u$linuxUser" }
+
+    Write-SetupLog "  Provisioning WSL user '$linuxUser' in $DistroName..."
+
+    # Keep this a single-quoted here-string: it is bash source and must reach the distro verbatim.
+    $provisionScript = @'
+set -e
+LINUX_USER="__USER__"
+if ! id -u "$LINUX_USER" >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash "$LINUX_USER"
+fi
+usermod -aG sudo "$LINUX_USER" 2>/dev/null || usermod -aG wheel "$LINUX_USER" 2>/dev/null || true
+# No password: an unattended build has nowhere safe to put one, and sudo is NOPASSWD below.
+passwd --delete "$LINUX_USER" >/dev/null 2>&1 || true
+printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$LINUX_USER" > /etc/sudoers.d/90-workstation-setup
+chmod 0440 /etc/sudoers.d/90-workstation-setup
+cat > /etc/wsl.conf <<WSLCONF
+[boot]
+systemd=true
+
+[user]
+default=$LINUX_USER
+
+[interop]
+enabled=true
+appendWindowsPath=true
+WSLCONF
+echo "provisioned $LINUX_USER"
+'@
+    $provisionScript = $provisionScript.Replace('__USER__', $linuxUser) -replace "`r`n", "`n"
+
+    $scriptPath = Join-Path $env:TEMP 'wsl-provision-user.sh'
+    [System.IO.File]::WriteAllText($scriptPath, $provisionScript, (New-Object System.Text.UTF8Encoding($false)))
+    $wslScriptPath = & wsl.exe --distribution $DistroName --user root -- wslpath -a "$scriptPath" 2>$null
+
+    if ([string]::IsNullOrWhiteSpace($wslScriptPath)) {
+        Write-Warning "Could not translate $scriptPath into a WSL path; skipping user provisioning."
+        return $false
+    }
+
+    & wsl.exe --distribution $DistroName --user root -- bash "$($wslScriptPath.Trim())"
+    $provisionExitCode = $LASTEXITCODE
+    Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+
+    if ($provisionExitCode -ne 0) {
+        Write-Warning "WSL user provisioning exited with $provisionExitCode."
+        return $false
+    }
+
+    # /etc/wsl.conf is read when the distro next starts, so drop the current instance.
+    & wsl.exe --terminate $DistroName | Out-Null
+    Write-SetupLog "  WSL user '$linuxUser' ready (passwordless sudo, systemd enabled)"
+    return $true
+}
+
+#endregion

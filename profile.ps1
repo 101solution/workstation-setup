@@ -1,8 +1,8 @@
 # Set and force overwrite of the $HOME variable
-Set-Variable HOME "C:\Projects\" -Force
+Set-Variable HOME "#workFolder#" -Force
 
 # Set the "~" shortcut value for the FileSystem provider
-(get-psprovider 'FileSystem').Home = "C:\Projects\"
+(get-psprovider 'FileSystem').Home = "#workFolder#"
 Import-Module Posh-Git
 oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\rudolfs-light-cs.omp.json" | Invoke-Expression
 Import-Module PSReadLine

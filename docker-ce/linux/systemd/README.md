@@ -15,7 +15,7 @@ to do so.
 ### Run the script and commands
 ```sh
 git clone https://github.com/101solution/workstation-setup.git
-cd containers/docker-ce/linux/systemd/
+cd workstation-setup/docker-ce/linux/systemd/
 bash ubuntu-wsl2-systemd-script.sh
 # Enter your password and wait until the script has finished
 ```

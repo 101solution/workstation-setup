@@ -1,4 +1,14 @@
-﻿[CmdletBinding()]
+﻿#Requires -RunAsAdministrator
+
+<#
+    Installs the PREREQUISITES for a GitHub Actions self-hosted runner: the packages listed
+    in packages-<role>.json plus Docker Engine.
+
+    It does NOT download, register or start the runner agent itself. That needs a
+    registration token and a target repo/org, so fetch the actions-runner release and run
+    .\config.cmd manually once this script completes.
+#>
+[CmdletBinding()]
 param (
     [Parameter()]
     [string]
@@ -51,4 +61,4 @@ foreach ($module in $psModules) {
 }
 
 $null = Stop-Transcript
-Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
+Rename-Item -Path $logFilePath -NewName "gh-runner-config-$(Get-Date -Format FileDateTime).log" -Force
