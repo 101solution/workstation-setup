@@ -27,11 +27,10 @@ distro) and removes itself.
 | `ce-corp` | Docker CE setup with Visual Studio Enterprise |
 | `ce-free` | Docker CE setup with Visual Studio Community |
 | `min` | The base packages only, nothing role-specific |
-| `runner` | Prerequisites for a GitHub Actions self-hosted runner — Terraform, .NET SDK 8, Azure CLI, Git, Az module, plus Docker Engine. Installed by `config-github-runner.ps1`, not `config-workstation.ps1` |
 
 Every role layers on the base packages from `packages-min.json`: PowerShell, Git, VS Code,
-Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, posh-git, PSReadLine, PSRule. The two
-exceptions are `min`, which is just that base, and `runner`, which uses its own manifest alone.
+Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, posh-git, PSReadLine, PSRule. `min` is
+just that base.
 
 ## Manual Setup
 
@@ -93,17 +92,6 @@ powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
 It installs a Windows Docker daemon and a Linux one inside WSL2 side by side, with the same
 unattended phase/resume behaviour and the same `-resumeMethod`, `-noReboot` and `-force` switches.
 Details in [docker-ce/README.md](docker-ce/README.md).
-
-## GitHub Actions runner prerequisites
-
-`config-github-runner.ps1` prepares a runner box: the `runner` manifest plus Docker Engine for
-Windows containers, unattended and resumable exactly like the workstation script (its state lives in
-`gh-runner-state.json`). It does **not** register the runner agent itself; that needs a registration
-token, so download the actions-runner release and run its `config.cmd` afterwards.
-
-```powershell
-powershell.exe -executionpolicy bypass -file .\config-github-runner.ps1
-```
 
 ## Terminal
 

@@ -1,45 +1,5 @@
 filter timestamp { "$(Get-Date -Format o): $_" }
 
-
-Function New-WindowsTask {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [string]
-        $TaskName,
-        [Parameter()]
-        [string]
-        $WorkingDirectory,
-        [Parameter()]
-        [string]
-        $PSCommand
-    )
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($null -eq $task) {
-        $delayTimeSpan = [TimeSpan]::FromMinutes(5)
-        $action = New-ScheduledTaskAction -Execute 'Powershell.exe' -Argument $PSCommand -WorkingDirectory $WorkingDirectory
-        $trigger = New-ScheduledTaskTrigger -AtStartup -RandomDelay $delayTimeSpan
-        $user = "NT AUTHORITY\SYSTEM" # Specify the account to run the script
-        $task = Register-ScheduledTask -Action $action -Trigger $trigger -TaskName $TaskName -Description $TaskName -User $user -RunLevel Highest -Force
-        Write-Output "Created Scheduled Task - $TaskName"  | timestamp
-    }
-    else {
-        Write-Output "Scheduled Task - $TaskName is exists"  | timestamp
-    }
-}
-Function Remove-WindowsTask {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [string]
-        $TaskName
-    )
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($null -ne $task) {
-        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-        Write-Output "Removed Scheduled Task - $TaskName"  | timestamp
-    }
-}
 Function Install-Fonts {
     [CmdletBinding()]
     param (
@@ -384,66 +344,6 @@ function Install-WingetPackage {
         }
 }
 
-Function Update-EnvironmentPath {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [string]
-        $NewPath
-    )
-    if (Test-Path -path "$NewPath") {
-        $containerType = [EnvironmentVariableTarget]::Machine
-        $persistedPaths = [Environment]::GetEnvironmentVariable('Path', $containerType) -split ';'
-        if ($persistedPaths -notcontains $NewPath) {
-            $persistedPaths = $persistedPaths + $NewPath | Where-Object { $_ }
-            [Environment]::SetEnvironmentVariable('Path', $persistedPaths -join ';', $containerType)
-        }           
-    }
-}
-Function Install-DockerEngine {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        [string]
-        $InstallPath
-    )
-    # Idempotent: safe to re-run after a reboot or on an already-configured box.
-    if (-not(Test-Path $InstallPath)) {
-        New-Item -Path $InstallPath -ItemType Directory -Force | Out-Null
-    }
-    $dockerexe = Get-Command -Name docker.exe -ErrorAction SilentlyContinue
-    if (-not $dockerexe) {
-        $Version = "20.10.21"
-        $zipPath = Join-Path $env:TEMP "docker-$Version.zip"
-        Write-Output "Downloading Docker Engine $Version..." | timestamp
-        curl.exe -L "https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip" -o $zipPath
-        if (-not (Test-Path -LiteralPath $zipPath)) {
-            throw "Docker Engine download failed; $zipPath was not created."
-        }
-        Expand-Archive -LiteralPath $zipPath -DestinationPath $InstallPath -Force
-        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-    }
-    else {
-        Write-Output "docker.exe already present at $($dockerexe.Source)" | timestamp
-    }
-    Update-EnvironmentPath -NewPath "$InstallPath\Docker"
-    Update-SessionEnvironment
-    $dockerexe = Get-Command -Name docker.exe -ErrorAction SilentlyContinue
-    if ($dockerexe) {
-        if (-not (Get-Service -Name docker -ErrorAction SilentlyContinue)) {
-            Write-Output "Registering the docker service..." | timestamp
-            dockerd.exe --register-service
-        }
-        $service = Get-Service -Name docker -ErrorAction SilentlyContinue
-        if ($service -and $service.Status -ne 'Running') {
-            Write-Output "Starting the docker service..." | timestamp
-            Start-Service docker
-        }
-    }
-    else {
-        Write-Warning "docker.exe still not found after install; skipping service registration."
-    }
-}
 Function Install-PSModule {
     [CmdletBinding()]
     param (
@@ -526,9 +426,9 @@ Function Write-SetupLog {
 
 $script:SetupStateRoot = Join-Path $env:ProgramData 'workstation-setup'
 
-# Each entry script keeps its own state file so their phase names cannot collide: the workstation
-# and runner scripts both have a 'winget' phase, and the Docker CE orchestrator has its own gate.
-# Because helper.ps1 is dot-sourced, the calling script can override this right after sourcing.
+# Each entry script keeps its own state file, so progress recorded by the workstation script can
+# never make the Docker CE orchestrator skip work (or vice versa) when both use a phase name such
+# as 'preflight'. Because helper.ps1 is dot-sourced, the caller can override this after sourcing.
 $script:SetupStateFileName = 'setup-state.json'
 
 Function Get-SetupStatePath {

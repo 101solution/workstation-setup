@@ -95,8 +95,8 @@ $state.runCount = [int]$state.runCount + 1
 Save-SetupState -State $state
 
 # Invoke-SetupPhase, Request-PhaseReboot and Invoke-RebootGate come from helper.ps1 and are shared
-# with config-github-runner.ps1 and docker-ce/config-docker.ps1. They operate on $state and the
-# $rebootPending / $rebootReason flags in this script's scope.
+# with docker-ce/config-docker.ps1. They operate on $state and the $rebootPending / $rebootReason
+# flags in this script's scope.
 
 Write-Output "" | timestamp
 Write-Output "=== Workstation setup: role '$role', run #$($state.runCount), $($state.rebootCount) reboot(s) so far ===" | timestamp

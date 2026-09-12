@@ -15,7 +15,6 @@ on a real (preferably throwaway) Windows machine and reading the transcript log.
 | Script | Purpose |
 |---|---|
 | `config-workstation.ps1` | Main setup, phase-based and resumable. Params: `-role` (default `mrldev`), `-enableWSL` (default `$true`), `-gitUser`, `-gitEmail`, `-defaultWorkFolder` (default `c:\projects`), `-resumeMethod`, `-noReboot`, `-force`, `-taskName` |
-| `config-github-runner.ps1` | Runner box, same phase/resume machinery with its own state file `gh-runner-state.json`. `-role` default `runner`. Does **not** merge `packages-min.json`. Enables the Containers feature (plus Hyper-V on client SKUs) before the gate and installs Docker Engine to `$env:UserProfile\tools` after it |
 | `get-latestPackages.ps1` | Bootstrap: downloads the latest non-draft GitHub release zipball into `c:\config`, renames it to `c:\config\workstation`, then runs `config-workstation.ps1 -role <role>` |
 | `docker-ce/config-docker.ps1` | Docker without Docker Desktop: phase-based orchestrator of the Windows and WSL2 installs, own state file `docker-ce-state.json`. Sets its own working directory, so it can be run from anywhere |
 
@@ -25,12 +24,11 @@ powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role mrld
 powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role cloudEngineer -gitUser "Name" -gitEmail "e@x.com"
 .\get-latestPackages.ps1 -role mrl     # fetch + run latest release
 powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
-powershell.exe -executionpolicy bypass -file .\config-github-runner.ps1
 ```
 
 ## Unattended execution and reboot resume
 
-All three config scripts are structured as named **phases**, run through `Invoke-SetupPhase` from
+Both config scripts are structured as named **phases**, run through `Invoke-SetupPhase` from
 `helper.ps1`. Each completed phase is appended to a state file under
 `%ProgramData%\workstation-setup\` — deliberately outside the repo, because `get-latestPackages.ps1`
 re-downloading the release would otherwise wipe progress. Every phase is idempotent, so re-running
@@ -38,18 +36,16 @@ the same command is always safe and skips finished work. `-force` clears the sta
 everything.
 
 Each script has its **own state file**, set by assigning `$script:SetupStateFileName` right after
-dot-sourcing the helper (`setup-state.json`, `gh-runner-state.json`, `docker-ce-state.json`). The
-workstation and runner scripts both have a `winget` phase, so a shared file would make one skip the
-other's work. The phase runner relies on the fact that a dot-sourced function's `$script:` scope *is*
+dot-sourcing the helper (`setup-state.json`, `docker-ce-state.json`), so one script's progress can
+never make the other skip work. The phase runner relies on the fact that a dot-sourced function's `$script:` scope *is*
 the caller's: `Invoke-SetupPhase`, `Request-PhaseReboot` and `Invoke-RebootGate` read `$state`,
 `$rebootPending` and `$rebootReason` from the calling script (verified with a scratch test).
 
 **Phase order is load-bearing.** In `config-workstation.ps1`, `wsl-features` runs first and with
 `-NoRestart`, then all the slow work (`winget`, `fonts`, `psmodules`, `shell`, `terminal`), then a
-single reboot gate, then `wsl-distro`. The runner script does the same with `containers-feature`
-before the gate and `docker-engine` after it (dockerd cannot start until the Containers feature is
-live); the Docker CE orchestrator has `containers-feature` and `environment` before the gate,
-`docker-windows` and `docker-linux` after it. The point is that **at most one reboot ever happens**
+single reboot gate, then `wsl-distro`. The Docker CE orchestrator has `containers-feature` and
+`environment` before the gate, `docker-windows` and `docker-linux` after it (dockerd cannot start
+until the Containers feature is live). The point is that **at most one reboot ever happens**
 and only what genuinely needs the restart is left on the far side of it. Don't reorder phases so that
 something slow lands after the gate.
 
@@ -107,7 +103,8 @@ of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (req
 
 - **`packages-min.json` is always merged as the base layer**, unioned with the role file and de-duped
   on `id`/`source`/`override`. The one exception is `-role min`, where the base is used alone.
-- Roles: `mrldev` (default), `mrl`, `cloudEngineer`, `developer`, `runner`, `ce-corp`, `ce-free`, `min`.
+- Roles: `mrldev` (default), `mrl`, `cloudEngineer`, `developer`, `ce-corp`, `ce-free`, `min`.
+  (`runner` and `config-github-runner.ps1` were removed on 2026-09-12; runner boxes are out of scope.)
 - `override` is forwarded to `winget install --override`, so its contents are the *underlying
   installer's* flag syntax, not WinGet's — e.g. VS Enterprise's `--add Microsoft.VisualStudio.Workload.*`
   or VS Code's `/mergetasks=addcontextmenufiles,...`.
@@ -116,14 +113,14 @@ of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (req
 
 ## helper.ps1
 
-Dot-sourced by all three config scripts. The obsolete Chocolatey and offline-WinGet helpers were
-removed in the 2026-09 cleanup, and `Install-Stax2AWS-CLI` (with its `-installStax2AWS` switch) was
-removed on request the same month.
+Dot-sourced by both config scripts. The obsolete Chocolatey and offline-WinGet helpers were removed
+in the 2026-09 cleanup; `Install-Stax2AWS-CLI`, the runner-only `Install-DockerEngine` /
+`Update-EnvironmentPath`, and the long-dead `New-/Remove-WindowsTask` pair were removed on request
+the same month. Everything left is reachable.
 
 Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Update-SessionEnvironment`,
-`Format-Json` (pretty-prints Windows Terminal settings), plus `Install-WinGet` and
-`Install-DockerEngine` (runner script only; the latter is idempotent — skips download, service
-registration and start when each is already done). **Never call `winget` or `wt` bare**: on a
+`Format-Json` (pretty-prints Windows Terminal settings), and `Install-WinGet` (fallback when winget
+cannot be resolved at all). **Never call `winget` or `wt` bare**: on a
 freshly created user profile the machine-wide Store package exists but the per-user alias in
 `%LOCALAPPDATA%\Microsoft\WindowsApps` does not (seen on the Azure Win11 24H2 image, even after a
 reboot), so `Get-WinGetPath` / `Get-WindowsTerminalPath` resolve the executable, registering the
@@ -136,11 +133,9 @@ otherwise exits 1 but still clears the resume hooks), resume (`Get-ResumeCommand
 (`Enable-WindowsFeatureSet`, `Enable-WslFeature`, `Enable-ContainerFeature`, `Test-WindowsClientSku`)
 and WSL provisioning (`Install-WslDistribution`, `Initialize-WslUser`).
 
-`New-WindowsTask` and `Remove-WindowsTask` are the one unreferenced pair. They were the pre-2026-09
-post-reboot mechanism (an at-startup task running as SYSTEM), superseded by `Register-ResumeTask`,
-which runs as the invoking user. Every live reboot continuation now goes through `Request-Reboot`;
-the old `ContainerBootstrap` task name survives in `docker-ce/install-docker-ce.ps1` only so a stale
-task from an earlier version gets unregistered.
+Every reboot continuation goes through `Request-Reboot` (`Register-ResumeTask`, running as the
+invoking user). The old `ContainerBootstrap` task name survives in `docker-ce/install-docker-ce.ps1`
+only so a stale task from an earlier version gets unregistered.
 
 `Install-WinGetPackage` decides install-vs-upgrade by parsing `winget list` column output through
 `Convert-WingetOutput`. That parser locates the header and data rows by content rather than by fixed
@@ -168,7 +163,7 @@ be preserved when editing the source file:
 
 Transcript logs go to `$PSScriptRoot\logs\` (gitignored), renamed on exit to
 `workstation-config-<FileDateTime>.log` by `config-workstation.ps1` and
-`gh-runner-config-<FileDateTime>.log` by `config-github-runner.ps1`.
+`docker-ce-config-<FileDateTime>.log` by `docker-ce/config-docker.ps1`.
 
 ## Docker CE (`docker-ce/`)
 

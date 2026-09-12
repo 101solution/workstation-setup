@@ -341,10 +341,18 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   writes `systemd=true` to `/etc/wsl.conf`, which is the modern supported way; the older hack is
   still in the repo. Verify on a real WSL2 install before removing anything.
 
-- [ ] **G14. Docker static binary versions are stale.** `install-docker-ce.ps1` pins 20.10.23 and
-  `Install-DockerEngine` pins 20.10.21, both from 2023 and out of support. Bump to a current
-  release from https://download.docker.com/win/static/stable/x86_64/ (and consider one shared
-  constant) once G7 has proven the flow works at all.
+- [ ] **G14. Docker static binary version is stale.** `install-docker-ce.ps1` pins 20.10.23, from
+  2023 and out of support. Bump to a current release from
+  https://download.docker.com/win/static/stable/x86_64/ once G7 has proven the flow works at all.
+  (`Install-DockerEngine`'s 20.10.21 went away with G19.)
+
+- [x] **G19. Runner script removed** (2026-09-12, on request: "we should remove config github run
+  action"). Deleted `config-github-runner.ps1` and `packages-runner.json`, and with them the
+  runner-only helpers `Install-DockerEngine` and `Update-EnvironmentPath`, plus the dead
+  `New-WindowsTask` / `Remove-WindowsTask` pair (item 18 had kept them for a mechanism that no
+  longer exists). `Enable-ContainerFeature` and `Install-WinGet` stay: the Docker CE orchestrator
+  and the workstation winget fallback use them. G8 above is now historical. README and CLAUDE.md
+  updated. Note this supersedes the G7 step 3 (runner VM test), which is no longer needed.
 
 ---
 
