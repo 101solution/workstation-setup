@@ -354,6 +354,29 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   and the workstation winget fallback use them. G8 above is now historical. README and CLAUDE.md
   updated. Note this supersedes the G7 step 3 (runner VM test), which is no longer needed.
 
+- [x] **G20. Code cleanup round 1** (2026-09-12, on request; items 1, 2, 3 and 5 of the list
+  offered). **Includes a real bug fix:** `Write-SetupLog` used `Write-Information`, which
+  `Start-Transcript` does *not* capture under Windows PowerShell 5.1 (verified locally: Output,
+  Host and Warning are captured, Information is not; pwsh 7 captures all four). Every diagnostic
+  line from the WSL/feature helpers was therefore missing from the run 1 transcript, which is why
+  the `wsl-distro` failure had no detail. Now `Write-Host`, and *every* log line in the repo goes
+  through it: the 92 `Write-Output "..." | timestamp` call sites were converted and the `timestamp`
+  filter deleted, so the success-stream-contamination class of bug can no longer occur.
+  Also: `Install-WinGetPackage` is one `winget install` call decided by return code
+  (`Convert-WingetOutput` and the double `winget list` warm-up removed; installer "reboot required"
+  codes now fold into the single reboot); `Update-SessionEnvironment` rewritten from ~95
+  Chocolatey-derived lines to ~20 using `[Environment]::GetEnvironmentVariables`; `Install-WinGet`
+  trimmed to the three `Add-AppxPackage` calls; `Register-AppxForCurrentUser` no longer waits two
+  minutes for an alias of a package that is not on the machine; typos and the `%` alias fixed.
+  **Manifests (same request):** Postman → `Bruno.Bruno` in mrl, mrldev, cloudEngineer, developer;
+  `Anthropic.ClaudeCode` and `OpenAI.Codex` added to `packages-min.json` (so every role gets them)
+  and the per-role ClaudeCode duplicates removed. IDs verified with `winget search`. The `Az`
+  PowerShell module was dropped from `cloudEngineer` (no longer used; it was the last role with it).
+  Return-code mapping verified locally: current package → `0x8A15002B`; a Store-installed
+  PowerShell 7 against the MSI manifest → `0x8A15008E` (technology mismatch), now logged as
+  "leaving the existing install alone" rather than a generic warning.
+  Not yet run on the VM — run 2 was already in flight on the previous code; run 3 will exercise it.
+
 ---
 
 ## Checked and NOT a bug

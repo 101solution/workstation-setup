@@ -21,7 +21,7 @@
       "source": "winget"
     },
     {
-      "id": "Postman.Postman",
+      "id": "Bruno.Bruno",
       "source": "winget"
     },
     {
@@ -35,18 +35,11 @@
     {
       "id": "OpenJS.NodeJS.LTS",
       "source": "winget"
-    },
-    {
-      "id": "Anthropic.ClaudeCode",
-      "source": "winget"
     }
   ],
   "powershellModule": [
     {
       "name": "posh-git"
-    },
-    {
-      "name": "Az"
     },
     {
       "name": "PSReadLine"

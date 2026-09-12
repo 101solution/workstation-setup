@@ -20,17 +20,17 @@ distro) and removes itself.
 
 | Role | Description |
 |------|-------------|
-| `mrldev` | Full developer setup — VS Enterprise, SSMS, DBeaver, Sourcetree, TortoiseGit, Power BI, Wireshark, and more |
-| `mrl` | Lighter setup — Terraform, .NET SDK 8, Azure CLI, Postman, AWS CLI, PowerToys, Storage Explorer, AZCopy |
-| `cloudEngineer` | Cloud engineering — kubectl, minikube, Terraform, .NET SDK 8, Azure CLI, GitHub CLI, Postman, AWS CLI, NodeJS LTS, Claude Code; Az and AWSPowerShell.NetCore modules |
-| `developer` | .NET SDK 8, Azure CLI, Postman, Terraform |
+| `mrldev` | Full developer setup — VS Enterprise, SSMS, DBeaver, Sourcetree, TortoiseGit, Power BI, Wireshark, Bruno, and more |
+| `mrl` | Lighter setup — Terraform, .NET SDK 8, Azure CLI, Bruno, AWS CLI, PowerToys, Storage Explorer, AZCopy |
+| `cloudEngineer` | Cloud engineering — kubectl, minikube, Terraform, .NET SDK 8, Azure CLI, GitHub CLI, Bruno, AWS CLI, NodeJS LTS; AWSPowerShell.NetCore module |
+| `developer` | .NET SDK 8, Azure CLI, Bruno, Terraform |
 | `ce-corp` | Docker CE setup with Visual Studio Enterprise |
 | `ce-free` | Docker CE setup with Visual Studio Community |
 | `min` | The base packages only, nothing role-specific |
 
 Every role layers on the base packages from `packages-min.json`: PowerShell, Git, VS Code,
-Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, posh-git, PSReadLine, PSRule. `min` is
-just that base.
+Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, Claude Code, Codex CLI, posh-git,
+PSReadLine, PSRule. `min` is just that base.
 
 ## Manual Setup
 

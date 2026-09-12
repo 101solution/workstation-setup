@@ -1,4 +1,20 @@
-filter timestamp { "$(Get-Date -Format o): $_" }
+# ---------------------------------------------------------------------------------------------
+# LOGGING: every log line in this repo goes through Write-SetupLog. It writes to the host, which
+# (a) Start-Transcript captures under Windows PowerShell 5.1 - the Information stream is NOT, so
+# Write-Information lines silently vanished from the transcripts - and (b) never lands in the
+# success stream, so a function can log freely and still `return $false` without its log lines
+# becoming part of the return value (`if (Fn)` on @('msg', $false) is TRUE; that once produced an
+# infinite reboot loop). Do not use Write-Output for logging.
+# ---------------------------------------------------------------------------------------------
+Function Write-SetupLog {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, Position = 0)]
+        [AllowEmptyString()]
+        [string] $Message
+    )
+    Write-Host "$(Get-Date -Format o): $Message"
+}
 
 Function Install-Fonts {
     [CmdletBinding()]
@@ -11,168 +27,53 @@ Function Install-Fonts {
         $fontFolder = "."
     )
     $fontRegPath = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
-    $fontReg = Get-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -ErrorAction SilentlyContinue 
-    $fontFileExixts = Test-Path -LiteralPath "C:\Windows\Fonts\$fontName.ttf"
-    if (-not($fontReg) -or -not($fontFileExixts)) {
-        Write-Output "Installing Font $fontName..."
+    $fontReg = Get-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -ErrorAction SilentlyContinue
+    $fontFileExists = Test-Path -LiteralPath "C:\Windows\Fonts\$fontName.ttf"
+    if (-not($fontReg) -or -not($fontFileExists)) {
+        Write-SetupLog "Installing Font $fontName..."
         Copy-Item "$fontFolder\$fontName.ttf" "C:\Windows\Fonts" -Force
         New-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -PropertyType string -Value "$fontName.ttf" -Force | Out-Null
     }
 }
 
-function Get-EnvironmentVariableNames([System.EnvironmentVariableTarget] $Scope) {
-    switch ($Scope) {
-        'User' { Get-Item 'HKCU:\Environment' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property }
-        'Machine' { Get-Item 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' | Select-Object -ExpandProperty Property }
-        'Process' { Get-ChildItem Env:\ | Select-Object -ExpandProperty Key }
-        default { throw "Unsupported environment scope: $Scope" }
-    }
-}
-
-Function Get-EnvironmentVariable {
-    [CmdletBinding()]
-    [OutputType([string])]
-    param(
-        [Parameter(Mandatory = $true)][string] $Name,
-        [Parameter(Mandatory = $true)][System.EnvironmentVariableTarget] $Scope,
-        [Parameter(Mandatory = $false)][switch] $PreserveVariables = $false,
-        [parameter(ValueFromRemainingArguments = $true)][Object[]] $ignoredArguments
-    )
-
-    # Do not log function call, it may expose variable names
-
-    [string] $MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME = "SYSTEM\CurrentControlSet\Control\Session Manager\Environment\";
-    [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($MACHINE_ENVIRONMENT_REGISTRY_KEY_NAME)
-    if ($Scope -eq [System.EnvironmentVariableTarget]::User) {
-        [string] $USER_ENVIRONMENT_REGISTRY_KEY_NAME = "Environment";
-        [Microsoft.Win32.RegistryKey] $win32RegistryKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($USER_ENVIRONMENT_REGISTRY_KEY_NAME)
-    }
-    elseif ($Scope -eq [System.EnvironmentVariableTarget]::Process) {
-        return [Environment]::GetEnvironmentVariable($Name, $Scope)
-    }
-
-    [Microsoft.Win32.RegistryValueOptions] $registryValueOptions = [Microsoft.Win32.RegistryValueOptions]::None
-
-    if ($PreserveVariables) {
-        Write-Verbose "Choosing not to expand environment names"
-        $registryValueOptions = [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
-    }
-
-    [string] $environmentVariableValue = [string]::Empty
-
-    try {
-        #Write-Verbose "Getting environment variable $Name"
-        if ($win32RegistryKey -ne $null) {
-            # Some versions of Windows do not have HKCU:\Environment
-            $environmentVariableValue = $win32RegistryKey.GetValue($Name, [string]::Empty, $registryValueOptions)
-        }
-    }
-    catch {
-        Write-Debug "Unable to retrieve the $Name environment variable. Details: $_"
-    }
-    finally {
-        if ($win32RegistryKey -ne $null) {
-            $win32RegistryKey.Close()
-        }
-    }
-
-    if ($environmentVariableValue -eq $null -or $environmentVariableValue -eq '') {
-        $environmentVariableValue = [Environment]::GetEnvironmentVariable($Name, $Scope)
-    }
-
-    return $environmentVariableValue
-}
-
 Function Update-SessionEnvironment {
-    $userName = $env:USERNAME
-    $architecture = $env:PROCESSOR_ARCHITECTURE
+    <#
+        .SYNOPSIS
+            Reloads the Machine and User environment into this process, so tools an installer just
+            added (git, pwsh, oh-my-posh, POSH_THEMES_PATH) are visible without a new shell.
+        .DESCRIPTION
+            User values override Machine values, PATH is the union of both, and PSModulePath is left
+            alone because the process value is the authoritative one.
+    #>
     $psModulePath = $env:PSModulePath
-
-    #ordering is important here, $user should override $machine...
-    $ScopeList = 'Process', 'Machine'
-    if ($userName -notin 'SYSTEM', "${env:COMPUTERNAME}`$") {
-        # but only if not running as the SYSTEM/machine in which case user can be ignored.
-        $ScopeList += 'User'
-    }
-    foreach ($Scope in $ScopeList) {
-        Get-EnvironmentVariableNames -Scope $Scope |
-        ForEach-Object {
-            Set-Item "Env:$_" -Value (Get-EnvironmentVariable -Scope $Scope -Name $_)
+    foreach ($scope in 'Machine', 'User') {
+        $variables = [Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::$scope)
+        foreach ($name in $variables.Keys) {
+            if ($name -in 'Path', 'PSModulePath', 'USERNAME', 'PROCESSOR_ARCHITECTURE') { continue }
+            Set-Item -Path "Env:$name" -Value $variables[$name]
         }
     }
-
-    #Path gets special treatment b/c it munges the two together
-    $paths = 'Machine', 'User' |
-    ForEach-Object {
-      (Get-EnvironmentVariable -Name 'PATH' -Scope $_) -split ';'
-    } |
-    Select-Object -Unique
-    $Env:PATH = $paths -join ';'
-
-    # PSModulePath is almost always updated by process, so we want to preserve it.
+    $paths = foreach ($scope in 'Machine', 'User') {
+        [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::$scope) -split ';'
+    }
+    $env:Path = ($paths | Where-Object { $_ } | Select-Object -Unique) -join ';'
     $env:PSModulePath = $psModulePath
-
-    # reset user and architecture
-    if ($userName) { $env:USERNAME = $userName; }
-    if ($architecture) { $env:PROCESSOR_ARCHITECTURE = $architecture; }
 }
 
 Function Install-WinGet {
-    #Install the latest package from GitHub
-    [cmdletbinding(SupportsShouldProcess)]
-    [alias("iwg")]
-    [OutputType("None")]
-    [OutputType("Microsoft.Windows.Appx.PackageManager.Commands.AppxPackage")]
-    Param(
-        [Parameter(HelpMessage = "Install the latest preview build.")]
-        [switch]$Preview,
-        [Parameter(HelpMessage = "Display the AppxPackage after installation.")]
-        [switch]$Passthru,
-        [Parameter(HelpMessage = "Upgrade to Latest version.")]
-        [switch]$Upgrade
-    )
-    Write-Output "  Checking if winget installed..." | timestamp
-    $wingetCmd = Get-Command -Name winget.exe -ErrorAction SilentlyContinue
-    if ((-not $wingetCmd) -or $Upgrade) {
-        Write-Output "  Winget is not installed, install now..." | timestamp
-
-        if ($IsCoreCLR -and ($PSVersionTable.PSVersion -lt [version]"7.2")) {
-            Write-Warning "If running this command in PowerShell 7, you need at least version 7.2."
-            return
-        }
-
-            Write-Output "  Installing required package Microsoft.VCLibs.140.00.UWPDesktop..." | timestamp
-            Try {
-                Add-AppxPackage -Path https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx -ErrorAction SilentlyContinue
-            }
-            Catch {
-                Throw $_
-            }
-        
-            Write-Output "  Installing required package Microsoft.UI.Xaml.2.8..." | timestamp
-            try {
-                Add-AppxPackage -Path  https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx -ErrorAction SilentlyContinue
-            }
-            catch {
-                Throw $_
-            }
-
-        Try {
-            If ($pscmdlet.ShouldProcess("Microsoft.DesktopAppInstaller", "Download and install winget")) {
-                Write-Output "  Installing winget cli..." | timestamp
-                Add-AppxPackage -Path https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle -ErrorAction Stop
-
-                if ($passthru) {
-                    Get-AppxPackage microsoft.desktopAppInstaller
-                }
-            }
-        } #Try
-        Catch {
-            Write-Verbose "[$((Get-Date).TimeofDay)] There was an error."
-            Throw $_
-        }
-        Write-Verbose "[$((Get-Date).TimeofDay)] Ending $($myinvocation.mycommand)"
-    }
+    <#
+        .SYNOPSIS
+            Installs App Installer (winget) from GitHub, with its two framework dependencies.
+        .DESCRIPTION
+            Fallback only: the winget phase calls this when Get-WinGetPath finds no winget at all,
+            e.g. an image without the Store package. Windows 11 ships it in-box, where the usual
+            problem is a missing per-user alias, which Get-WinGetPath handles without downloading.
+    #>
+    Write-SetupLog "  Installing winget (Microsoft.DesktopAppInstaller) and its dependencies..."
+    # The dependencies may already be present; a failure there is not fatal, the bundle install is.
+    Add-AppxPackage -Path 'https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx' -ErrorAction SilentlyContinue
+    Add-AppxPackage -Path 'https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx' -ErrorAction SilentlyContinue
+    Add-AppxPackage -Path 'https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -ErrorAction Stop
 }
 Function Register-AppxForCurrentUser {
     <#
@@ -186,12 +87,19 @@ Function Register-AppxForCurrentUser {
     #>
     [CmdletBinding()]
     param (
+        [Parameter(Mandatory)] [string] $PackageName,
         [Parameter(Mandatory)] [string] $PackageFamilyName,
         [Parameter(Mandatory)] [string] $ExeName,
         [Parameter()] [int] $TimeoutSeconds = 120
     )
     $aliasPath = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$ExeName"
     if (Test-Path -LiteralPath $aliasPath) { return $aliasPath }
+
+    # Nothing to register (and no point waiting for an alias) if the package is not on the machine.
+    if (-not (Get-AppxPackage -AllUsers -Name $PackageName -ErrorAction SilentlyContinue)) {
+        Write-SetupLog "  $PackageName is not installed for any user."
+        return $null
+    }
 
     Write-SetupLog "  $ExeName alias missing for this user; registering $PackageFamilyName..."
     try {
@@ -224,7 +132,7 @@ Function Get-PackagedExePath {
     $cmd = Get-Command -Name $ExeName -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
 
-    $alias = Register-AppxForCurrentUser -PackageFamilyName $PackageFamilyName -ExeName $ExeName
+    $alias = Register-AppxForCurrentUser -PackageName $PackageName -PackageFamilyName $PackageFamilyName -ExeName $ExeName
     if ($alias) { return $alias }
 
     $package = Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
@@ -255,93 +163,52 @@ Function Get-WindowsTerminalPath {
         -PackageFamilyName 'Microsoft.WindowsTerminal_8wekyb3d8bbwe')
 }
 
-function Convert-WingetOutput {
-    [CmdletBinding()]
+Function Install-WinGetPackage {
+    <#
+        .SYNOPSIS
+            Installs a package, or upgrades it if a newer version is available, in one winget call.
+        .DESCRIPTION
+            `winget install` already upgrades an installed package when the source has a newer
+            version and returns a distinct code when it is current, so there is no need to run
+            `winget list`, parse its column layout and then decide between install and upgrade
+            (the old parser sliced columns by character offset and broke on any header change).
+            Outcome is decided from winget's documented return codes, not from its text output.
+    #>
     param (
-        [Parameter()]
-        [string[]]
-        $wingetOutput,
-        [Parameter()]
-        [string]
-        $packageId
-    )
-    if (-not $wingetOutput) {
-        return $null
-    }
-
-    # Locate the header and data rows by content rather than by fixed index. winget prepends a
-    # variable number of progress/spinner lines, so the header is not reliably line 0 and the
-    # matching package is not reliably line 2.
-    $headerLine = $null
-    $headerIndex = -1
-    for ($i = 0; $i -lt $wingetOutput.Count; $i++) {
-        $line = $wingetOutput[$i]
-        if ($line -and ($line.IndexOf("Id") -ge 0) -and ($line.IndexOf("Version") -ge 0)) {
-            $headerLine = $line
-            $headerIndex = $i
-            break
-        }
-    }
-    if ($null -eq $headerLine) {
-        return $null
-    }
-
-    $dataLine = $null
-    for ($i = $headerIndex + 1; $i -lt $wingetOutput.Count; $i++) {
-        if ($wingetOutput[$i] -and ($wingetOutput[$i].IndexOf($packageId) -ge 0)) {
-            $dataLine = $wingetOutput[$i]
-            break
-        }
-    }
-    if ($null -eq $dataLine) {
-        return $null
-    }
-
-    $idIndex = $headerLine.IndexOf("Id")
-    $appIndex = $dataLine.IndexOf($packageId)
-    if ($idIndex -lt 0 -or $appIndex -lt 0) {
-        return $null
-    }
-
-    $header = $headerLine.Substring($idIndex) -replace '\s+', ","
-    $data = $dataLine.Substring($appIndex) -replace '\s+', ","
-    return @($header, $data) | ConvertFrom-Csv
-}
-function Install-WingetPackage {
-    param (
-        [string] $packageId,
+        [Parameter(Mandatory)] [string] $packageId,
         [string] $overrideParameters = "",
         [string] $source = "winget"
     )
-    
-        Write-Output "Checking package $packageId... using WinGet" | timestamp
-        $winget = Get-WinGetPath
-        if (-not $winget) {
-            throw "winget is not available in this session; cannot install $packageId."
-        }
+    $winget = Get-WinGetPath
+    if (-not $winget) {
+        throw "winget is not available in this session; cannot install $packageId."
+    }
 
-        $outputRaw = & $winget list -e --id $packageId --accept-source-agreements --source $source
-        Start-Sleep -Milliseconds 150
-        $outputRaw = & $winget list -e --id $packageId --accept-source-agreements --source $source
-        $output = Convert-WingetOutput -wingetOutput $outputRaw -packageId $packageId
-        if ($null -eq $output) {
-            Write-Output "    Installing package $packageId..." | timestamp
-            if ($overrideParameters -ne "") {
-                & $winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters" --source $source
-            }
-            else {
-                & $winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
-            }
+    Write-SetupLog "Installing or upgrading $packageId..."
+    $arguments = @('install', '-e', '--id', $packageId, '-h', '--accept-package-agreements', '--accept-source-agreements', '--source', $source)
+    if ($overrideParameters -ne "") {
+        $arguments += @('--override', $overrideParameters)
+    }
+    $output = & $winget @arguments 2>&1
+    $code = '0x{0:X8}' -f ($LASTEXITCODE -band 0xFFFFFFFF)
+
+    # https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
+    switch ($code) {
+        '0x00000000' { Write-SetupLog "  $packageId installed or upgraded." }
+        '0x8A15002B' { Write-SetupLog "  $packageId is already up to date." }                 # PACKAGE_ALREADY_INSTALLED / no upgrade available
+        '0x8A150061' { Write-SetupLog "  $packageId is already up to date (no applicable update)." } # UPDATE_NOT_APPLICABLE
+        '0x8A15010D' { Write-SetupLog "  $packageId is already installed." }                  # INSTALL_ALREADY_INSTALLED
+        '0x8A150014' { Write-Warning "  $packageId was not found in source '$source'; check the id in the manifest." } # NO_APPLICATIONS_FOUND
+        '0x8A15008E' { Write-SetupLog "  $packageId is installed via a different technology (e.g. Store vs MSI); leaving the existing install alone." } # INSTALL_TECHNOLOGY_MISMATCH
+        { $_ -in '0x8A150109', '0x8A15010A' } {                                                # INSTALL_REBOOT_REQUIRED_TO_FINISH / _FOR_INSTALL
+            Write-SetupLog "  $packageId installed; its installer requires a restart, folded into the single reboot."
+            Request-PhaseReboot -Reason "the $packageId installer requires a restart"
         }
-        else {
-            if (($null -ne $output.Available) -and ($output.Available -ne "")) {
-                Write-Output "    Upgarding package $packageId..." | timestamp
-                & $winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
-            }
-            else {
-                Write-Output "    Latest version of $packageId... already installed" | timestamp
-            }
+        default {
+            Write-Warning "  winget exited with $code for $packageId. Last output:"
+            @($output | Where-Object { "$_".Trim() } | Select-Object -Last 5) | ForEach-Object { Write-SetupLog "    $_" }
         }
+    }
 }
 
 Function Install-PSModule {
@@ -351,7 +218,7 @@ Function Install-PSModule {
         [string]
         $PsModuleName
     )
-    Write-Output "Checking PS Module $PsModuleName... " | timestamp
+    Write-SetupLog "Checking PS Module $PsModuleName... "
     $installedModule = Get-InstalledModule -Name $PsModuleName -ErrorAction SilentlyContinue
 
     if ($null -eq $installedModule) {
@@ -363,26 +230,26 @@ Function Install-PSModule {
             Sort-Object Version -Descending | Select-Object -First 1
         $galleryModule = Find-Module -Name $PsModuleName -Repository PSGallery -ErrorAction SilentlyContinue
         if ($availableModule -and $galleryModule -and ($availableModule.Version -ge $galleryModule.Version)) {
-            Write-Output "  PS Module $PsModuleName $($availableModule.Version) is already present." | timestamp
+            Write-SetupLog "  PS Module $PsModuleName $($availableModule.Version) is already present."
             return
         }
-        Write-Output "  Installing PS Module $PsModuleName..."  | timestamp
+        Write-SetupLog "  Installing PS Module $PsModuleName..."
         Install-Module -Name $PsModuleName -Repository PSGallery -Force -AllowClobber -SkipPublisherCheck
     }
     else {
         $latestModule = Find-Module -Name $PsModuleName -Repository PSGallery
         if ($installedModule.Version.CompareTo($latestModule.Version) -lt 0) {
-            Write-Output "  Updating PS Module $PsModuleName from $($installedModule.Version.ToString()) to version $($latestModule.Version.ToString()) ..."  | timestamp
+            Write-SetupLog "  Updating PS Module $PsModuleName from $($installedModule.Version.ToString()) to version $($latestModule.Version.ToString()) ..."
             Update-Module -Name $PsModuleName -Force
         }
         else {
-            Write-Output "  Latest PS Module $PsModuleName has been installed." | timestamp
+            Write-SetupLog "  Latest PS Module $PsModuleName has been installed."
         }
     }
 }
 Function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
     $indent = 0;
-    ($json -Split "`n" | % {
+    ($json -Split "`n" | ForEach-Object {
         if ($_ -match '[\}\]]\s*,?\s*$') {
             # This line ends with ] or }, decrement the indentation level
             $indent--
@@ -397,26 +264,6 @@ Function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
 }
 
 #region Unattended execution and reboot resume
-# ---------------------------------------------------------------------------------------------
-# NOTE ON LOGGING INSIDE VALUE-RETURNING FUNCTIONS
-# The `Write-Output "..." | timestamp` idiom used elsewhere in this repo writes to the SUCCESS
-# stream, so inside a function that also returns a value the log lines become part of the return
-# value. `return $false` after two log lines yields @('msg','msg',$false), and `if (Fn)` on a
-# non-empty array is TRUE - which would make Enable-WslFeature demand a reboot forever. Functions
-# below whose return value is tested therefore log via Write-SetupLog, which uses the information
-# stream (still captured by Start-Transcript) and leaves the success stream clean.
-# ---------------------------------------------------------------------------------------------
-
-Function Write-SetupLog {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory, Position = 0)]
-        [AllowEmptyString()]
-        [string] $Message
-    )
-    Write-Information "$(Get-Date -Format o): $Message" -InformationAction Continue
-}
-
 # ---------------------------------------------------------------------------------------------
 # Setup runs in named phases. Completed phases are recorded in a state file outside the repo so a
 # re-download by get-latestPackages.ps1 cannot lose progress. When a step needs a reboot, the state
@@ -496,7 +343,7 @@ Function Clear-SetupState {
     $statePath = Get-SetupStatePath
     if (Test-Path -LiteralPath $statePath) {
         Remove-Item -LiteralPath $statePath -Force
-        Write-Output "Cleared resume state $statePath" | timestamp
+        Write-SetupLog "Cleared resume state $statePath"
     }
 }
 
@@ -539,8 +386,8 @@ Function Request-PhaseReboot {
         .SYNOPSIS
             Called from inside a phase body when the phase cannot finish until Windows restarts.
         .DESCRIPTION
-            A flag rather than a return value, because this repo's `Write-Output ... | timestamp`
-            logging writes to the success stream and would be mixed into a phase's return value.
+            A flag rather than a return value, so a phase body never has to return anything and
+            whatever its commands emit can never be mistaken for a result.
     #>
     param ([Parameter(Mandatory)] [string] $Reason)
     $script:rebootPending = $true
@@ -563,24 +410,24 @@ Function Invoke-SetupPhase {
         [Parameter(Mandatory)] [scriptblock] $Body
     )
     if (Test-PhaseComplete -State $script:state -Phase $Phase) {
-        Write-Output "--- phase '$Phase': already complete, skipping" | timestamp
+        Write-SetupLog "--- phase '$Phase': already complete, skipping"
         return
     }
-    Write-Output "" | timestamp
-    Write-Output "--- phase '$Phase': starting" | timestamp
+    Write-SetupLog ""
+    Write-SetupLog "--- phase '$Phase': starting"
     $rebootOwedBefore = $script:rebootPending
     try {
         & $Body
         if ($script:rebootPending -and -not $rebootOwedBefore) {
-            Write-Output "--- phase '$Phase': deferred, needs a restart first" | timestamp
+            Write-SetupLog "--- phase '$Phase': deferred, needs a restart first"
             return
         }
         Complete-Phase -State $script:state -Phase $Phase
-        Write-Output "--- phase '$Phase': complete" | timestamp
+        Write-SetupLog "--- phase '$Phase': complete"
     }
     catch {
         Write-Warning "--- phase '$Phase' failed: $($_.Exception.Message). It will be retried on the next run."
-        Write-Output $_.ScriptStackTrace | timestamp
+        Write-SetupLog $_.ScriptStackTrace
         $script:failedPhases = @(@($script:failedPhases) + $Phase)
     }
 }
@@ -601,21 +448,21 @@ Function Complete-Setup {
     )
     Clear-ResumeHooks -Name $TaskName
     $failed = @($script:failedPhases)
-    Write-Output "" | timestamp
+    Write-SetupLog ""
     if ($failed.Count -gt 0) {
         Write-Warning "=== $Title finished with $($failed.Count) FAILED phase(s): $($failed -join ', ') ==="
-        Write-Output "  Fix the cause and re-run the same command; completed phases are skipped." | timestamp
+        Write-SetupLog "  Fix the cause and re-run the same command; completed phases are skipped."
         $script:SetupExitCode = 1
     }
     else {
         Complete-Phase -State $State -Phase 'done'
-        Write-Output "=== $Title finished ===" | timestamp
+        Write-SetupLog "=== $Title finished ==="
         $script:SetupExitCode = 0
     }
-    Write-Output "  Runs: $($State.runCount)   Reboots: $($State.rebootCount)" | timestamp
-    Write-Output "  Phases completed: $((@($State.completedPhases) -join ', '))" | timestamp
-    Write-Output "  State file: $(Get-SetupStatePath)" | timestamp
-    Write-Output "  Re-run with -force to redo every phase from scratch." | timestamp
+    Write-SetupLog "  Runs: $($State.runCount)   Reboots: $($State.rebootCount)"
+    Write-SetupLog "  Phases completed: $((@($State.completedPhases) -join ', '))"
+    Write-SetupLog "  State file: $(Get-SetupStatePath)"
+    Write-SetupLog "  Re-run with -force to redo every phase from scratch."
 }
 
 Function Test-PendingReboot {
@@ -716,7 +563,7 @@ Function Register-ResumeTask {
 
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal `
         -Settings $settings -Description 'Resumes workstation setup after a reboot' -Force | Out-Null
-    Write-Output "Registered resume task '$TaskName' for $runAsUser at logon" | timestamp
+    Write-SetupLog "Registered resume task '$TaskName' for $runAsUser at logon"
 }
 
 Function Unregister-ResumeTask {
@@ -727,7 +574,7 @@ Function Unregister-ResumeTask {
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($null -ne $task) {
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-        Write-Output "Removed resume task '$TaskName'" | timestamp
+        Write-SetupLog "Removed resume task '$TaskName'"
     }
 }
 
@@ -760,7 +607,7 @@ Function Register-ResumeRunOnce {
     $value = "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command " +
              "`"Start-Process powershell.exe -Verb RunAs -ArgumentList $elevateArgs`""
     Set-ItemProperty -Path $runOnceKey -Name $Name -Value $value -Force
-    Write-Output "Armed RunOnce resume entry '$Name' (expect one UAC prompt after logon)" | timestamp
+    Write-SetupLog "Armed RunOnce resume entry '$Name' (expect one UAC prompt after logon)"
 }
 
 Function Unregister-ResumeRunOnce {
@@ -771,7 +618,7 @@ Function Unregister-ResumeRunOnce {
     $runOnceKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
     if (Get-ItemProperty -Path $runOnceKey -Name $Name -ErrorAction SilentlyContinue) {
         Remove-ItemProperty -Path $runOnceKey -Name $Name -Force -ErrorAction SilentlyContinue
-        Write-Output "Removed RunOnce resume entry '$Name'" | timestamp
+        Write-SetupLog "Removed RunOnce resume entry '$Name'"
     }
 }
 
@@ -831,18 +678,18 @@ Function Request-Reboot {
             Register-ResumeRunOnce -Name $TaskName -ResumeCommand $ResumeCommand -WorkingDirectory $WorkingDirectory
         }
         'None' {
-            Write-Output "No resume mechanism armed (-resumeMethod None)." | timestamp
+            Write-SetupLog "No resume mechanism armed (-resumeMethod None)."
         }
     }
 
-    Write-Output "" | timestamp
-    Write-Output "REBOOT REQUIRED: $Reason" | timestamp
-    Write-Output "  Completed phases so far: $((@($State.completedPhases) -join ', '))" | timestamp
-    Write-Output "  Reboot number: $($State.rebootCount)" | timestamp
-    Write-Output "  Resume method: $ResumeMethod" | timestamp
+    Write-SetupLog ""
+    Write-SetupLog "REBOOT REQUIRED: $Reason"
+    Write-SetupLog "  Completed phases so far: $((@($State.completedPhases) -join ', '))"
+    Write-SetupLog "  Reboot number: $($State.rebootCount)"
+    Write-SetupLog "  Resume method: $ResumeMethod"
     if ($ResumeMethod -eq 'None') {
-        Write-Output "  To finish, re-run after the reboot:" | timestamp
-        Write-Output "    $ResumeCommand" | timestamp
+        Write-SetupLog "  To finish, re-run after the reboot:"
+        Write-SetupLog "    $ResumeCommand"
     }
 
     if ($NoReboot) {
@@ -850,7 +697,7 @@ Function Request-Reboot {
         return
     }
 
-    Write-Output "Restarting now." | timestamp
+    Write-SetupLog "Restarting now."
     try { $null = Stop-Transcript } catch { }
     Restart-Computer -Force
     # Restart-Computer is asynchronous; stop doing work while Windows tears the session down.
@@ -878,8 +725,8 @@ Function Invoke-RebootGate {
     if (-not $script:rebootPending) {
         return
     }
-    Write-Output "" | timestamp
-    Write-Output "All phases that do not need a restart are complete." | timestamp
+    Write-SetupLog ""
+    Write-SetupLog "All phases that do not need a restart are complete."
     Request-Reboot -State $State -Reason $script:rebootReason -TaskName $TaskName -ResumeCommand $ResumeCommand `
         -ResumeMethod $ResumeMethod -WorkingDirectory $WorkingDirectory -NoReboot:$NoReboot
     # Only reached with -NoReboot; Request-Reboot restarts the machine otherwise.

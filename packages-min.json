@@ -32,6 +32,14 @@
     {
       "id": "7zip.7zip",
       "source": "winget"
+    },
+    {
+      "id": "Anthropic.ClaudeCode",
+      "source": "winget"
+    },
+    {
+      "id": "OpenAI.Codex",
+      "source": "winget"
     }
   ],
   "powershellModule": [

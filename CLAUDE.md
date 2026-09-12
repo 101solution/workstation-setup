@@ -69,15 +69,24 @@ under SYSTEM those would land in `C:\Windows\System32\config\systemprofile`.
 `-noReboot` records what is owed and exits **3010** instead of restarting, for image pipelines that
 sequence their own reboots.
 
-### Logging inside value-returning functions
+### Logging
 
-This repo's logging idiom is `Write-Output "..." | timestamp`, which writes to the **success
-stream**. Inside a function that also returns a value, those log lines *become part of the return
-value*: `return $false` after two log lines yields `@('msg','msg',$false)`, and `if (Fn)` on a
-non-empty array is `$true`. This already caused a latent infinite reboot loop in
-`Enable-WslFeature`. Functions whose return value is tested therefore log via **`Write-SetupLog`**
-(information stream, still captured by `Start-Transcript`). If you add a function that returns a
-value, use `Write-SetupLog`, and sanity-check with `@(Fn).Count -eq 1`.
+**All logging goes through `Write-SetupLog`** (defined at the top of `helper.ps1`; it writes a
+timestamped line with `Write-Host`). Never log with `Write-Output`, and never use
+`Write-Information`. Two reasons, both learned the hard way:
+
+- `Write-Output` writes to the success stream, so inside a function that returns a value the log
+  lines *become part of the return value*: `return $false` after two log lines yields
+  `@('msg','msg',$false)`, and `if (Fn)` on a non-empty array is `$true`. This once produced a
+  latent infinite reboot loop in `Enable-WslFeature`. Sanity-check new value-returning functions
+  with `@(Fn).Count -eq 1`.
+- Under Windows PowerShell 5.1, which is what these scripts run under, `Start-Transcript` does
+  **not** capture the Information stream (verified on 5.1.26100 and on the test VM). An earlier
+  `Write-SetupLog` used `Write-Information`, and every diagnostic line from the WSL and feature
+  helpers was silently missing from the run 1 transcript. `Write-Host` is captured.
+
+Because the config scripts log nothing before dot-sourcing `helper.ps1`, `Write-SetupLog` is
+always defined by the time it is called. Keep it that way.
 
 ### Making WSL unattended
 
@@ -137,11 +146,13 @@ Every reboot continuation goes through `Request-Reboot` (`Register-ResumeTask`, 
 invoking user). The old `ContainerBootstrap` task name survives in `docker-ce/install-docker-ce.ps1`
 only so a stale task from an earlier version gets unregistered.
 
-`Install-WinGetPackage` decides install-vs-upgrade by parsing `winget list` column output through
-`Convert-WingetOutput`. That parser locates the header and data rows by content rather than by fixed
-line index, but it still slices columns by character offset, so it remains sensitive to a localised
-or reformatted header. It deliberately calls `winget list` twice — the first invocation on a cold
-machine returns nothing usable.
+`Install-WinGetPackage` is a single `winget install` call whose outcome is read from winget's
+documented **return codes**, not its text: `0` installed/upgraded, `0x8A15002B` / `0x8A150061` /
+`0x8A15010D` already current, `0x8A150014` id not found in the source (warning), and
+`0x8A150109` / `0x8A15010A` installer needs a restart, which is folded into the single reboot via
+`Request-PhaseReboot`. `winget install` upgrades an installed package itself when the source has a
+newer version, so the former `winget list` → column parser → install-or-upgrade dance
+(`Convert-WingetOutput`, removed 2026-09-12) is gone. Don't reintroduce output parsing.
 
 ## Files Copied Onto the Machine
 

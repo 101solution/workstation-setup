@@ -42,12 +42,10 @@ param (
 )
 
 $ErrorActionPreference = 'Continue'
-filter timestamp { "$(Get-Date -Format o): $_" }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $logFilePath = "$repoRoot\logs\docker-ce-config.log"
 if (-not (Test-Path $logFilePath)) {
-    Write-Output "Create log file $logFilePath..." | timestamp
     New-Item -Path $logFilePath -ItemType File -Force | Out-Null
 }
 $null = Start-Transcript $logFilePath -Append
@@ -56,8 +54,9 @@ $finishLog = {
     Rename-Item -Path $logFilePath -NewName "docker-ce-config-$(Get-Date -Format FileDateTime).log" -Force
 }
 
-Write-Output "Loading helper script..." | timestamp
+# All logging goes through Write-SetupLog (defined in helper.ps1), so nothing is logged before this.
 . "$repoRoot\helper.ps1"
+Write-SetupLog "Helper loaded from $repoRoot\helper.ps1"
 $script:SetupStateFileName = 'docker-ce-state.json'
 
 # install-docker-ce.ps1 and install-docker-ce.sh use paths relative to the current directory.
@@ -68,7 +67,7 @@ $resumeCommand = Get-ResumeCommand -ScriptPath (Join-Path $PSScriptRoot 'config-
     -BoundParameters $PSBoundParameters
 
 if ($force) {
-    Write-Output "-force supplied: discarding any saved progress." | timestamp
+    Write-SetupLog "-force supplied: discarding any saved progress."
     Clear-SetupState
 }
 
@@ -76,30 +75,30 @@ $state = Get-SetupState
 $state.runCount = [int]$state.runCount + 1
 Save-SetupState -State $state
 
-Write-Output "" | timestamp
-Write-Output "=== Docker CE setup: run #$($state.runCount), $($state.rebootCount) reboot(s) so far ===" | timestamp
+Write-SetupLog ""
+Write-SetupLog "=== Docker CE setup: run #$($state.runCount), $($state.rebootCount) reboot(s) so far ==="
 if (@($state.completedPhases).Count -gt 0) {
-    Write-Output "Resuming. Already complete: $((@($state.completedPhases) -join ', '))" | timestamp
+    Write-SetupLog "Resuming. Already complete: $((@($state.completedPhases) -join ', '))"
 }
 
 # ---------------------------------------------------------------------------------------------
 # Phase: Windows features. FIRST and -NoRestart, so the one restart is paid before any install.
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'containers-feature' -Body {
-    Write-Output "Enabling the Windows features the Docker daemon needs ..." | timestamp
+    Write-SetupLog "Enabling the Windows features the Docker daemon needs ..."
     if (Enable-ContainerFeature) {
         Request-PhaseReboot -Reason 'the Containers feature needs a restart before the Windows Docker daemon can start'
-        Write-Output "Features enabled; a restart is owed before Docker can be installed." | timestamp
+        Write-SetupLog "Features enabled; a restart is owed before Docker can be installed."
     }
     else {
-        Write-Output "Container features are enabled and need no restart." | timestamp
+        Write-SetupLog "Container features are enabled and need no restart."
     }
 }
 
 # Per-user, idempotent, and independent of both daemons; so it also covers a box where Docker was
 # already installed and the docker-windows phase therefore does nothing.
 Invoke-SetupPhase -Phase 'environment' -Body {
-    Write-Output "Pointing bare `docker` at the Linux daemon and propagating BASH_ENV into WSL ..." | timestamp
+    Write-SetupLog "Pointing bare `docker` at the Linux daemon and propagating BASH_ENV into WSL ..."
     [Environment]::SetEnvironmentVariable("WSLENV", "BASH_ENV/u", [System.EnvironmentVariableTarget]::User)
     [Environment]::SetEnvironmentVariable("BASH_ENV", "/etc/bash.bashrc", [System.EnvironmentVariableTarget]::User)
     [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2375", [System.EnvironmentVariableTarget]::User)
@@ -116,7 +115,7 @@ Invoke-RebootGate -State $state -TaskName $taskName -ResumeCommand $resumeComman
 # (e.g. Windows had one pending that the feature phase could not see), so the gate runs once more.
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'docker-windows' -Body {
-    Write-Output "Configuring Docker on Windows (host) ..." | timestamp
+    Write-SetupLog "Configuring Docker on Windows (host) ..."
     & "$PSScriptRoot\install-docker-ce.ps1"
     $exitCode = $LASTEXITCODE
     if ($exitCode -eq 3010) {
@@ -142,12 +141,12 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
         throw "WSL distro '$distroName' is not registered. Run config-workstation.ps1 first; it registers $distroName and gives its user passwordless sudo."
     }
 
-    Write-Output "Configuring Docker on Linux (WSL2 $distroName) ..." | timestamp
+    Write-SetupLog "Configuring Docker on Linux (WSL2 $distroName) ..."
     # install-docker-ce.sh ends with `sudo shutdown -r now`, which tears down this wsl.exe session,
     # so its exit code is not meaningful. Verify by talking to the daemon on a fresh instance instead.
     & wsl.exe --distribution $distroName -- bash ./install-docker-ce.sh
 
-    Write-Output "Waiting for the Linux daemon to come back on the patched unit file ..." | timestamp
+    Write-SetupLog "Waiting for the Linux daemon to come back on the patched unit file ..."
     $ready = $false
     for ($attempt = 1; $attempt -le 12 -and -not $ready; $attempt++) {
         Start-Sleep -Seconds 5
@@ -157,7 +156,7 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
     if (-not $ready) {
         throw "The Linux Docker daemon in $distroName did not answer after install; check 'wsl -d $distroName -- systemctl status docker'."
     }
-    Write-Output "Linux Docker daemon is up." | timestamp
+    Write-SetupLog "Linux Docker daemon is up."
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -165,9 +164,9 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
 # ---------------------------------------------------------------------------------------------
 Complete-Setup -State $state -TaskName $taskName -Title "Docker CE setup"
 if ($SetupExitCode -eq 0) {
-    Write-Output "  Verify in a NEW shell (so DOCKER_HOST is picked up):" | timestamp
-    Write-Output "    docker run hello-world          # Linux daemon, tcp://127.0.0.1:2375" | timestamp
-    Write-Output "    docker -c win run hello-world   # Windows daemon, tcp://127.0.0.1:2378" | timestamp
+    Write-SetupLog "  Verify in a NEW shell (so DOCKER_HOST is picked up):"
+    Write-SetupLog "    docker run hello-world          # Linux daemon, tcp://127.0.0.1:2375"
+    Write-SetupLog "    docker -c win run hello-world   # Windows daemon, tcp://127.0.0.1:2378"
 }
 
 & $finishLog

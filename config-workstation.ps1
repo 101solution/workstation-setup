@@ -69,24 +69,23 @@ param (
 )
 
 $ErrorActionPreference = 'Continue'
-filter timestamp { "$(Get-Date -Format o): $_" }
 
 $logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
-    Write-Output "Create log file $logFilePath..." | timestamp
     New-Item -Path $logFilePath -ItemType File -Force | Out-Null
 }
 $null = Start-Transcript $logFilePath -Append
 
-Write-Output "Loading helper script..." | timestamp
+# All logging goes through Write-SetupLog (defined in helper.ps1), so nothing is logged before this.
 . $PSScriptRoot\helper.ps1
+Write-SetupLog "Helper loaded from $PSScriptRoot\helper.ps1"
 
 # Rebuild the exact invocation to replay after a reboot, before anything can mutate $PSBoundParameters.
 $resumeCommand = Get-ResumeCommand -ScriptPath (Join-Path $PSScriptRoot 'config-workstation.ps1') `
     -BoundParameters $PSBoundParameters
 
 if ($force) {
-    Write-Output "-force supplied: discarding any saved progress." | timestamp
+    Write-SetupLog "-force supplied: discarding any saved progress."
     Clear-SetupState
 }
 
@@ -98,10 +97,10 @@ Save-SetupState -State $state
 # with docker-ce/config-docker.ps1. They operate on $state and the $rebootPending / $rebootReason
 # flags in this script's scope.
 
-Write-Output "" | timestamp
-Write-Output "=== Workstation setup: role '$role', run #$($state.runCount), $($state.rebootCount) reboot(s) so far ===" | timestamp
+Write-SetupLog ""
+Write-SetupLog "=== Workstation setup: role '$role', run #$($state.runCount), $($state.rebootCount) reboot(s) so far ==="
 if (@($state.completedPhases).Count -gt 0) {
-    Write-Output "Resuming. Already complete: $((@($state.completedPhases) -join ', '))" | timestamp
+    Write-SetupLog "Resuming. Already complete: $((@($state.completedPhases) -join ', '))"
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -109,14 +108,14 @@ if (@($state.completedPhases).Count -gt 0) {
 # owes us. We record it rather than acting on it now, so it can be merged into the single restart.
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'preflight' -Body {
-    Write-Output "Register NuGet source ..." | timestamp
+    Write-SetupLog "Register NuGet source ..."
     Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 `
         -ForceBootstrap -Force -ErrorAction SilentlyContinue | Out-Null
 
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
 
     # Without this, Install-Module stops to confirm an untrusted repository.
-    Write-Output "Trusting the PSGallery repository so module installs do not prompt ..." | timestamp
+    Write-SetupLog "Trusting the PSGallery repository so module installs do not prompt ..."
     if (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue) {
         Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
     }
@@ -126,7 +125,7 @@ Invoke-SetupPhase -Phase 'preflight' -Body {
     }
 }
 
-Write-Output "Getting package config ..." | timestamp
+Write-SetupLog "Getting package config ..."
 $packageConfigBase = Get-Content $PSScriptRoot\packages-min.json | ConvertFrom-Json
 if ($role -ne 'min') {
     $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
@@ -138,16 +137,16 @@ if ($role -ne 'min') {
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'wsl-features' -Body {
     if (-not $enableWSL) {
-        Write-Output "Skipping WSL (-enableWSL `$false)." | timestamp
+        Write-SetupLog "Skipping WSL (-enableWSL `$false)."
         return
     }
-    Write-Output "Enabling the WSL2 optional features ..." | timestamp
+    Write-SetupLog "Enabling the WSL2 optional features ..."
     if (Enable-WslFeature) {
         Request-PhaseReboot -Reason 'the WSL2 optional features need a restart before a distro can be registered'
-        Write-Output "Features enabled; a restart is owed before the distro can be registered." | timestamp
+        Write-SetupLog "Features enabled; a restart is owed before the distro can be registered."
     }
     else {
-        Write-Output "WSL optional features are enabled and need no restart." | timestamp
+        Write-SetupLog "WSL optional features are enabled and need no restart."
     }
 }
 
@@ -158,14 +157,14 @@ Invoke-SetupPhase -Phase 'wsl-features' -Body {
 Invoke-SetupPhase -Phase 'winget' -Body {
     $wingetPackages = ($packageConfigBase.winget + $packageConfig.winget) | Select-Object -Unique -Property id, source, override
     if (-not $wingetPackages -or $wingetPackages.Count -eq 0) {
-        Write-Output "No winget packages for role '$role'." | timestamp
+        Write-SetupLog "No winget packages for role '$role'."
         return
     }
     # A brand-new user profile has App Installer installed machine-wide but no per-user `winget`
     # alias yet (see TODO G15), so resolve the executable rather than assuming it is on PATH.
     $winget = Get-WinGetPath
     if (-not $winget) {
-        Write-Output "winget not found for this user; installing App Installer ..." | timestamp
+        Write-SetupLog "winget not found for this user; installing App Installer ..."
         Install-WinGet
         Update-SessionEnvironment
         $winget = Get-WinGetPath
@@ -173,11 +172,7 @@ Invoke-SetupPhase -Phase 'winget' -Body {
     if (-not $winget) {
         throw "winget is unavailable in this session, so no packages can be installed. Every later phase that needs an installed tool (pwsh, git, oh-my-posh, Windows Terminal) will fail too."
     }
-    Write-Output "Using winget at $winget" | timestamp
-    #call winget list as the first time it takes some time to load
-    Write-Output "Run winget list ..." | timestamp
-    & $winget list --accept-source-agreements | Out-Null
-    Start-Sleep -Milliseconds 2000
+    Write-SetupLog "Using winget at $winget"
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
             Install-WinGetPackage -packageId $pack.id -overrideParameters $pack.override -source $pack.source
@@ -189,7 +184,7 @@ Invoke-SetupPhase -Phase 'winget' -Body {
 }
 
 #Reload environment variables for the session
-Write-Output "Update Environment Variables in the session"  | timestamp
+Write-SetupLog "Update Environment Variables in the session"
 Update-SessionEnvironment
 
 Invoke-SetupPhase -Phase 'fonts' -Body {
@@ -216,9 +211,9 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     }
     & $pwsh.Source -command "& {Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force}" | Out-Null
 
-    Write-Output "Copy ps profile"  | timestamp
+    Write-SetupLog "Copy ps profile"
     $psProfilePath = $PROFILE.CurrentUserAllHosts -Replace "WindowsPowerShell", "Powershell"
-    Write-Output "Creating ps profile $psProfilePath"  | timestamp
+    Write-SetupLog "Creating ps profile $psProfilePath"
     New-Item -ItemType File -Path $psProfilePath -Force | Out-Null
 
     $profileContent = Get-Content "$PSScriptRoot/profile.ps1" -Encoding UTF8
@@ -226,17 +221,17 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     Unblock-File -LiteralPath $psProfilePath
 
     if (-not (Test-Path -Path $defaultWorkFolder -PathType Container)) {
-        Write-Output "Create folder $defaultWorkFolder"  | timestamp
+        Write-SetupLog "Create folder $defaultWorkFolder"
         New-Item -Path $defaultWorkFolder -ItemType Directory -Force | Out-Null
     }
 
-    Write-Output "Copy oh-my-posh theme"  | timestamp
+    Write-SetupLog "Copy oh-my-posh theme"
     # POSH_THEMES_PATH is a user env var written by the Oh My Posh installer; the session may not
     # have it yet, and without this guard the theme would be written to the drive root.
     $poshThemesPath = $env:POSH_THEMES_PATH
     if ([string]::IsNullOrWhiteSpace($poshThemesPath)) {
         $poshThemesPath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\themes'
-        Write-Output "POSH_THEMES_PATH not set in this session; using $poshThemesPath" | timestamp
+        Write-SetupLog "POSH_THEMES_PATH not set in this session; using $poshThemesPath"
     }
     if (-not (Test-Path -LiteralPath $poshThemesPath)) {
         New-Item -Path $poshThemesPath -ItemType Directory -Force | Out-Null
@@ -244,17 +239,17 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     $poshContent = Get-Content "$PSScriptRoot/rudolfs-light-cs.omp.json" -Encoding UTF8
     $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-File -LiteralPath "$poshThemesPath\rudolfs-light-cs.omp.json" -Encoding utf8 -Force
 
-    Write-Output "Copy git config..."  | timestamp
+    Write-SetupLog "Copy git config..."
     Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
     if (("" -ne $gitUser -or "" -ne $gitEmail) -and -not (Get-Command -Name git.exe -ErrorAction SilentlyContinue)) {
         throw "git.exe not found, so -gitUser/-gitEmail cannot be applied. This phase depends on the winget phase installing Git.Git."
     }
     if ("" -ne $gitUser) {
-        Write-Output "Set Git User ..."  | timestamp
+        Write-SetupLog "Set Git User ..."
         git config --global user.name $gitUser
     }
     if ("" -ne $gitEmail) {
-        Write-Output "Set Git User Email..."  | timestamp
+        Write-SetupLog "Set Git User Email..."
         git config --global user.email $gitEmail
     }
 }
@@ -268,7 +263,7 @@ Invoke-SetupPhase -Phase 'terminal' -Body {
         if (-not $wt) {
             throw "wt.exe not found. This phase depends on Windows Terminal (in-box, or Microsoft.WindowsTerminal from the winget phase); it will be retried on the next run."
         }
-        Write-Output "Settings file not created yet, open Windows Terminal to force it created..."  | timestamp
+        Write-SetupLog "Settings file not created yet, open Windows Terminal to force it created..."
         # if terminal never run, the settings file will not exist, so need to force it to create by running wt.exe
         Start-Process -FilePath $wt -ArgumentList "-h"
         $deadline = (Get-Date).AddSeconds(20)
@@ -283,7 +278,7 @@ Invoke-SetupPhase -Phase 'terminal' -Body {
         return
     }
 
-    Write-Output "Update Windows Terminal Settings"  | timestamp
+    Write-SetupLog "Update Windows Terminal Settings"
     $defaultSettings = Get-Content -LiteralPath "$PSScriptRoot\terminal-default-settings.json" | ConvertFrom-Json
     $defaultSettings.startingDirectory = $defaultWorkFolder
     $terminalSettings = Get-Content -LiteralPath $terminalSettingFile | ConvertFrom-Json
@@ -315,7 +310,7 @@ Invoke-RebootGate -State $state -TaskName $taskName -ResumeCommand $resumeComman
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'wsl-distro' -Body {
     if (-not $enableWSL) {
-        Write-Output "Skipping WSL distro registration (-enableWSL `$false)." | timestamp
+        Write-SetupLog "Skipping WSL distro registration (-enableWSL `$false)."
         return
     }
     $wslCommand = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
@@ -324,7 +319,7 @@ Invoke-SetupPhase -Phase 'wsl-distro' -Body {
         return
     }
 
-    Write-Output "Updating the WSL runtime ..." | timestamp
+    Write-SetupLog "Updating the WSL runtime ..."
     & wsl.exe --update | Out-Null
     & wsl.exe --set-default-version 2 | Out-Null
 
