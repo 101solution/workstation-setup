@@ -355,6 +355,24 @@ Design is documented in the "Unattended execution and reboot resume" section of 
     as SYSTEM, so `az vm run-command` cannot exercise it directly); `logs/vm-wsl-diag-launch2.ps1`
     is the driver.
 
+  **Run 3a result (2026-09-12, code at `bc78b8c`, re-run on the run 2 machine without a snapshot
+  restore, driven by `logs/vm-rerun.ps1`).** All seven completed phases skipped, `wsl-distro`
+  completed in 10 s, `done` recorded, "finished" with no failures. The new `Write-Host` logging
+  shows the helper diagnostics in the transcript for the first time ("Running provisioning script
+  at /mnt/c/Users/azureadmin/..."). **End state verified on the machine, not just from the log:**
+  - WSL: default user `azureadmin` (uid 1000, in `sudo`), `sudo -n true` exits 0, `systemctl
+    is-system-running` = `running`, `/etc/wsl.conf` has `systemd=true` / `default=azureadmin` /
+    interop on, sudoers drop-in present.
+  - Windows, per-user: PowerShell 7 profile, `.gitconfig`, Oh My Posh theme, Windows Terminal
+    `settings.json` (startingDirectory `c:\projects`, font CaskaydiaCove Nerd Font Mono), font file
+    and registry entry, `c:\projects` created. Resume task and RunOnce entry both gone.
+  - All 16 `mrl`+`min` winget ids report installed; `pwsh`, `git`, `oh-my-posh`, `wt`, `code`,
+    `terraform`, `az` all on PATH. Modules posh-git 1.1.0, PSReadLine 2.4.5, PSRule 2.9.0.
+  **G7 step 1 is therefore passed** for role `mrl` with the default `ScheduledTask` resume.
+  Still owed: (a) one full run from the clean snapshot on the *current* code (`15fa7ae`+), because
+  runs 2/3a executed the pre-cleanup winget parser and logging; (b) step 2, the Docker CE flow;
+  (c) G11 can now be judged: systemd is running in the distro via `/etc/wsl.conf` alone.
+
 - [ ] **G11. Confirm whether `docker-ce/linux/systemd/` is now redundant.** `Initialize-WslUser`
   writes `systemd=true` to `/etc/wsl.conf`, which is the modern supported way; the older hack is
   still in the repo. Verify on a real WSL2 install before removing anything.
