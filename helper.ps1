@@ -966,14 +966,20 @@ echo "provisioned $LINUX_USER"
 
     $scriptPath = Join-Path $env:TEMP 'wsl-provision-user.sh'
     [System.IO.File]::WriteAllText($scriptPath, $provisionScript, (New-Object System.Text.UTF8Encoding($false)))
-    $wslScriptPath = & wsl.exe --distribution $DistroName --user root -- wslpath -a "$scriptPath" 2>$null
 
-    if ([string]::IsNullOrWhiteSpace($wslScriptPath)) {
-        Write-Warning "Could not translate $scriptPath into a WSL path; skipping user provisioning."
+    # wsl.exe passes the command line through the distro's shell, which treats backslashes as
+    # escapes: 'C:\Users\x' arrived as 'C:Usersx' on the test VM. wslpath accepts forward slashes.
+    $windowsPathForShell = $scriptPath -replace '\\', '/'
+    $wslPathOutput = (& wsl.exe --distribution $DistroName --user root -- wslpath -a $windowsPathForShell 2>&1 | ForEach-Object { "$_" }) -join ' '
+    $wslScriptPath = $wslPathOutput.Trim()
+    $wslPathExit = $LASTEXITCODE
+    if ($wslPathExit -ne 0 -or $wslScriptPath -notmatch '^/') {
+        Write-Warning "Could not translate $scriptPath into a WSL path (wslpath exit ${wslPathExit}: '$wslPathOutput'); skipping user provisioning."
         return $false
     }
+    Write-SetupLog "  Running provisioning script at $wslScriptPath"
 
-    & wsl.exe --distribution $DistroName --user root -- bash "$($wslScriptPath.Trim())"
+    & wsl.exe --distribution $DistroName --user root -- bash "$wslScriptPath"
     $provisionExitCode = $LASTEXITCODE
     Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
 

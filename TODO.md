@@ -337,6 +337,24 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   re-run `logs/vm-bootstrap.ps1` via `az vm run-command` (it re-downloads `main`), restart, poll
   with `logs/vm-poll.ps1`. Expect the winget phase to take 10–20 minutes this time.
 
+  **Run 2 result (2026-09-12, from the clean snapshot, code at `337fb0c`, i.e. before the G19/G20
+  cleanup).** G15, G16, G17 and G18 all confirmed fixed on the real machine:
+  `winget` resolved at the user's alias path and installed the whole `mrl` manifest (~11 min);
+  `fonts`, `psmodules`, `shell`, `terminal` all completed; the gate rebooted, the resume task fired
+  and skipped the seven completed phases; `wsl --install --no-launch` registered **Ubuntu 26.04
+  LTS** (`/etc/wsl-distribution.conf`: oobe via `/usr/lib/wsl/wsl-setup`, `defaultUid = 1000`,
+  `systemd=true` already in its `/etc/wsl.conf`); and the one remaining failure was *reported* as a
+  failure: "finished with 1 FAILED phase(s): wsl-distro", exit 1, `done` not recorded, resume task
+  removed. Total: 2 runs, 1 reboot, ~15 minutes.
+  - [x] **G21. `Initialize-WslUser` lost the backslashes in the script path.** `wslpath` reported
+    `C:UsersazureadminAppDataLocalTempwsl-provision-user.sh`: `wsl.exe -- cmd args` goes through
+    the distro's shell, which treats `\` as an escape. Reproduced locally (`wslpath -a
+    'C:\Windows\win.ini'` fails; `'C:/Windows/win.ini'` works). Fixed by passing the path with
+    forward slashes, checking the exit code, and logging wslpath's actual output instead of
+    discarding stderr. Diagnosed via a scheduled task running as `azureadmin` (WSL refuses to run
+    as SYSTEM, so `az vm run-command` cannot exercise it directly); `logs/vm-wsl-diag-launch2.ps1`
+    is the driver.
+
 - [ ] **G11. Confirm whether `docker-ce/linux/systemd/` is now redundant.** `Initialize-WslUser`
   writes `systemd=true` to `/etc/wsl.conf`, which is the modern supported way; the older hack is
   still in the repo. Verify on a real WSL2 install before removing anything.
