@@ -129,10 +129,19 @@ Invoke-SetupPhase -Phase 'winget' -Body {
         Write-Output "No winget packages for role '$role'." | timestamp
         return
     }
-    # Windows Server has no inbox winget.
-    Install-WinGet
+    # Windows Server has no inbox winget; a new client profile has it but no per-user alias yet.
+    $winget = Get-WinGetPath
+    if (-not $winget) {
+        Install-WinGet
+        Update-SessionEnvironment
+        $winget = Get-WinGetPath
+    }
+    if (-not $winget) {
+        throw "winget is unavailable in this session, so no packages can be installed."
+    }
+    Write-Output "Using winget at $winget" | timestamp
     Write-Output "Run winget list ..." | timestamp
-    winget list --accept-source-agreements | Out-Null
+    & $winget list --accept-source-agreements | Out-Null
     Start-Sleep -Milliseconds 2000
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
@@ -167,17 +176,12 @@ Invoke-SetupPhase -Phase 'docker-engine' -Body {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Done: retire every resume hook so a later logon does not re-run setup.
+# Done: retire every resume hook; record 'done' and exit 0 only if no phase failed.
 # ---------------------------------------------------------------------------------------------
-Complete-Phase -State $state -Phase 'done'
-Clear-ResumeHooks -Name $taskName
-
-Write-Output "" | timestamp
-Write-Output "=== Runner prerequisites finished for role '$role' ===" | timestamp
-Write-Output "  Runs: $($state.runCount)   Reboots: $($state.rebootCount)" | timestamp
-Write-Output "  Phases completed: $((@($state.completedPhases) -join ', '))" | timestamp
-Write-Output "  State file: $(Get-SetupStatePath)" | timestamp
-Write-Output "  Next: download the actions-runner release and run .\config.cmd with a registration token." | timestamp
+Complete-Setup -State $state -TaskName $taskName -Title "Runner prerequisites for role '$role'"
+if ($SetupExitCode -eq 0) {
+    Write-Output "  Next: download the actions-runner release and run .\config.cmd with a registration token." | timestamp
+}
 
 & $finishLog
-exit 0
+exit $SetupExitCode

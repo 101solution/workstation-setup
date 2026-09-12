@@ -161,9 +161,22 @@ Invoke-SetupPhase -Phase 'winget' -Body {
         Write-Output "No winget packages for role '$role'." | timestamp
         return
     }
+    # A brand-new user profile has App Installer installed machine-wide but no per-user `winget`
+    # alias yet (see TODO G15), so resolve the executable rather than assuming it is on PATH.
+    $winget = Get-WinGetPath
+    if (-not $winget) {
+        Write-Output "winget not found for this user; installing App Installer ..." | timestamp
+        Install-WinGet
+        Update-SessionEnvironment
+        $winget = Get-WinGetPath
+    }
+    if (-not $winget) {
+        throw "winget is unavailable in this session, so no packages can be installed. Every later phase that needs an installed tool (pwsh, git, oh-my-posh, Windows Terminal) will fail too."
+    }
+    Write-Output "Using winget at $winget" | timestamp
     #call winget list as the first time it takes some time to load
     Write-Output "Run winget list ..." | timestamp
-    winget list --accept-source-agreements | Out-Null
+    & $winget list --accept-source-agreements | Out-Null
     Start-Sleep -Milliseconds 2000
     foreach ($pack in $wingetPackages) {
         if ($pack.override) {
@@ -192,7 +205,16 @@ Invoke-SetupPhase -Phase 'psmodules' -Body {
 
 # All per-user, which is why the resume task runs as the invoking user and never as SYSTEM.
 Invoke-SetupPhase -Phase 'shell' -Body {
-    pwsh.exe -command "& {Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force}" | Out-Null
+    # Everything below is configuration for tools the winget phase installs. Fail with a clear
+    # message rather than a cascade of "not recognized" errors if that phase did not complete.
+    $pwsh = Get-Command -Name pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $pwsh -and (Test-Path -LiteralPath "$env:ProgramFiles\PowerShell\7\pwsh.exe")) {
+        $pwsh = Get-Command -Name "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+    }
+    if (-not $pwsh) {
+        throw "pwsh.exe not found. This phase depends on the winget phase installing Microsoft.PowerShell; it will be retried once that has succeeded."
+    }
+    & $pwsh.Source -command "& {Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force}" | Out-Null
 
     Write-Output "Copy ps profile"  | timestamp
     $psProfilePath = $PROFILE.CurrentUserAllHosts -Replace "WindowsPowerShell", "Powershell"
@@ -209,11 +231,24 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     }
 
     Write-Output "Copy oh-my-posh theme"  | timestamp
+    # POSH_THEMES_PATH is a user env var written by the Oh My Posh installer; the session may not
+    # have it yet, and without this guard the theme would be written to the drive root.
+    $poshThemesPath = $env:POSH_THEMES_PATH
+    if ([string]::IsNullOrWhiteSpace($poshThemesPath)) {
+        $poshThemesPath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\themes'
+        Write-Output "POSH_THEMES_PATH not set in this session; using $poshThemesPath" | timestamp
+    }
+    if (-not (Test-Path -LiteralPath $poshThemesPath)) {
+        New-Item -Path $poshThemesPath -ItemType Directory -Force | Out-Null
+    }
     $poshContent = Get-Content "$PSScriptRoot/rudolfs-light-cs.omp.json" -Encoding UTF8
-    $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-File -LiteralPath "$($env:POSH_THEMES_PATH)\rudolfs-light-cs.omp.json" -Encoding utf8 -Force
+    $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-File -LiteralPath "$poshThemesPath\rudolfs-light-cs.omp.json" -Encoding utf8 -Force
 
     Write-Output "Copy git config..."  | timestamp
     Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
+    if (("" -ne $gitUser -or "" -ne $gitEmail) -and -not (Get-Command -Name git.exe -ErrorAction SilentlyContinue)) {
+        throw "git.exe not found, so -gitUser/-gitEmail cannot be applied. This phase depends on the winget phase installing Git.Git."
+    }
     if ("" -ne $gitUser) {
         Write-Output "Set Git User ..."  | timestamp
         git config --global user.name $gitUser
@@ -227,10 +262,19 @@ Invoke-SetupPhase -Phase 'shell' -Body {
 Invoke-SetupPhase -Phase 'terminal' -Body {
     $terminalSettingFile = "$($env:LocalAppData)\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
     if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
+        # Windows Terminal is in-box on Windows 11 and also in packages-min.json, but like winget its
+        # per-user alias can be missing on a new profile (TODO G16); resolve it the same way.
+        $wt = Get-WindowsTerminalPath
+        if (-not $wt) {
+            throw "wt.exe not found. This phase depends on Windows Terminal (in-box, or Microsoft.WindowsTerminal from the winget phase); it will be retried on the next run."
+        }
         Write-Output "Settings file not created yet, open Windows Terminal to force it created..."  | timestamp
         # if terminal never run, the settings file will not exist, so need to force it to create by running wt.exe
-        Start-Process -FilePath "wt.exe" -ArgumentList "-h"
-        Start-Sleep -Milliseconds 800
+        Start-Process -FilePath $wt -ArgumentList "-h"
+        $deadline = (Get-Date).AddSeconds(20)
+        while (-not (Test-Path -LiteralPath $terminalSettingFile) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+        }
         Get-Process -Name "WindowsTerminal" -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
     }
 
@@ -284,24 +328,21 @@ Invoke-SetupPhase -Phase 'wsl-distro' -Body {
     & wsl.exe --update | Out-Null
     & wsl.exe --set-default-version 2 | Out-Null
 
-    if (Install-WslDistribution -DistroName 'Ubuntu') {
-        Initialize-WslUser -DistroName 'Ubuntu' | Out-Null
+    # Both helpers return $false (with a warning) on failure. Throw so the phase is NOT recorded
+    # complete and is retried next run (TODO G18: run 1 recorded a failed registration as done).
+    if (-not (Install-WslDistribution -DistroName 'Ubuntu')) {
+        throw "Ubuntu could not be registered without user interaction."
+    }
+    if (-not (Initialize-WslUser -DistroName 'Ubuntu')) {
+        throw "Ubuntu is registered but its user could not be provisioned."
     }
 }
 
 # ---------------------------------------------------------------------------------------------
-# Done: retire every resume hook so a later logon does not re-run setup.
+# Done: retire every resume hook; record 'done' and exit 0 only if no phase failed.
 # ---------------------------------------------------------------------------------------------
-Complete-Phase -State $state -Phase 'done'
-Clear-ResumeHooks -Name $taskName
-
-Write-Output "" | timestamp
-Write-Output "=== Workstation setup finished for role '$role' ===" | timestamp
-Write-Output "  Runs: $($state.runCount)   Reboots: $($state.rebootCount)" | timestamp
-Write-Output "  Phases completed: $((@($state.completedPhases) -join ', '))" | timestamp
-Write-Output "  State file: $(Get-SetupStatePath)" | timestamp
-Write-Output "  Re-run with -force to redo every phase from scratch." | timestamp
+Complete-Setup -State $state -TaskName $taskName -Title "Workstation setup for role '$role'"
 
 $null = Stop-Transcript
 Rename-Item -Path $logFilePath -NewName "workstation-config-$(Get-Date -Format FileDateTime).log" -Force
-exit 0
+exit $SetupExitCode

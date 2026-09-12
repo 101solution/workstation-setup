@@ -291,8 +291,8 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   (posh-git, PSReadLine, PSRule) ran with no prompt. Fonts installed. `Test-PendingReboot` correctly
   saw a reboot the fresh image already owed. Whole thing: 2 runs, 1 reboot, ~3.5 minutes.
 
-  *What failed, and the fixes owed (all still open):*
-  - [ ] **G15. `winget` is not on PATH for a freshly created user profile.** Both runs failed with
+  *What failed, and the fixes made (2026-09-12, awaiting run 2 to confirm):*
+  - [x] **G15. `winget` is not on PATH for a freshly created user profile.** Both runs failed with
     "The term 'winget' is not recognized". `Microsoft.DesktopAppInstaller 1.26.509.0` *is* installed
     for all users, but `%LOCALAPPDATA%\Microsoft\WindowsApps` for `azureadmin` contained only
     `wsl.exe`/`wslconfig.exe` — the per-user app-execution aliases had not been created, even on
@@ -301,24 +301,37 @@ Design is documented in the "Unattended execution and reboot resume" section of 
     and fall back to invoking `winget.exe` by full path from the package `InstallLocation`. Resolve
     once into a script-scoped variable and have `Install-WinGetPackage` use it. Because `winget`
     failed, **nothing** from the manifest was installed, which caused the next two cascades.
-  - [ ] **G16. `shell` and `terminal` phases hard-fail when `winget` failed.** `pwsh.exe` and
+    *Done:* `Register-AppxForCurrentUser` / `Get-PackagedExePath` / `Get-WinGetPath` in helper.ps1;
+    both `winget` phases and `Install-WinGetPackage` invoke `& (Get-WinGetPath)`, and the phase
+    throws a clear message if winget still cannot be found after `Install-WinGet`.
+  - [x] **G16. `shell` and `terminal` phases hard-fail when `winget` failed.** `pwsh.exe` and
     `wt.exe` were absent. Fix: check the dependency up front and throw a clear "depends on the
     winget phase" message; for `wt.exe` also try the `Microsoft.WindowsTerminal` package
     `InstallLocation` and `-RegisterByFamilyName`, since Windows Terminal is in-box on 24H2 yet its
     alias was missing too.
-  - [ ] **G17. `wsl --install --help` is not a valid command on WSL 2.7.13** ("Invalid command line
+    *Done:* `shell` resolves `pwsh.exe` (PATH, then `%ProgramFiles%\PowerShell\7`) and throws a
+    "depends on the winget phase" message; also guards `POSH_THEMES_PATH` being unset (the theme
+    was headed for the drive root) and checks `git.exe` before `git config`. `terminal` uses
+    `Get-WindowsTerminalPath` and waits up to 20 s for `settings.json` to appear.
+  - [x] **G17. `wsl --install --help` is not a valid command on WSL 2.7.13** ("Invalid command line
     argument: --help"), so `Test-WslInstallSupportsFlag` always returned false, the launcher
     fallback found no `ubuntu*.exe`, and registration failed. Fix: feature-detect from `wsl --help`
     (which lists `--install ... --no-launch`), or simply attempt `--no-launch` and fall back on a
     non-zero exit.
-  - [ ] **G18. A failed `Install-WslDistribution` was recorded as `wsl-distro` *complete*,** and
+    *Done:* detection reads `wsl --help` (verified locally on WSL 2.6.3: lists `--no-launch, -n`),
+    and `Install-WslDistribution` trusts the registration list over `wsl.exe`'s exit code.
+  - [x] **G18. A failed `Install-WslDistribution` was recorded as `wsl-distro` *complete*,** and
     more generally the run ended with "setup finished", `done` recorded and exit 0 despite four
     phase failures. Fix: throw from the phase when the distro is not registered; have
     `Invoke-SetupPhase` track failed phases; at the end, if any failed, do *not* record `done`,
     print the list, and exit 1 — but still clear the resume hooks so a broken phase cannot loop at
     every logon.
-  - Also seen: `Install-Fonts` leaks the `New-ItemProperty` object into the transcript (cosmetic,
-    pipe to `Out-Null`).
+    *Done:* `wsl-distro` throws when either helper returns `$false`; `Invoke-SetupPhase` appends to
+    `$failedPhases`; new `Complete-Setup` in helper.ps1 (used by all three scripts) always clears
+    the resume hooks, records `done` and exits 0 only when nothing failed, otherwise lists the
+    failures and exits 1. Unit-tested: failing run → exit 1, `done` absent; clean run → exit 0.
+  - [x] Also seen: `Install-Fonts` leaked the `New-ItemProperty` object into the transcript. Piped
+    to `Out-Null`.
 
   *Run 2 plan:* fix G15–G18, push to `main`, restore the snapshot (procedure above), start the VM,
   re-run `logs/vm-bootstrap.ps1` via `az vm run-command` (it re-downloads `main`), restart, poll

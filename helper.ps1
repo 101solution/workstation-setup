@@ -56,7 +56,7 @@ Function Install-Fonts {
     if (-not($fontReg) -or -not($fontFileExixts)) {
         Write-Output "Installing Font $fontName..."
         Copy-Item "$fontFolder\$fontName.ttf" "C:\Windows\Fonts" -Force
-        New-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -PropertyType string -Value "$fontName.ttf" -Force
+        New-ItemProperty -Name "$fontName (TrueType)" -Path $fontRegPath -PropertyType string -Value "$fontName.ttf" -Force | Out-Null
     }
 }
 
@@ -214,6 +214,87 @@ Function Install-WinGet {
         Write-Verbose "[$((Get-Date).TimeofDay)] Ending $($myinvocation.mycommand)"
     }
 }
+Function Register-AppxForCurrentUser {
+    <#
+        .SYNOPSIS
+            Registers an already-provisioned Store package for the current user and waits for its
+            app-execution alias to appear.
+        .DESCRIPTION
+            On a freshly created profile the machine-wide package exists but the per-user alias in
+            %LOCALAPPDATA%\Microsoft\WindowsApps does not, so `winget`/`wt` are "not recognized"
+            (seen on the Azure Win11 24H2 image, even after a reboot). Returns the alias path or $null.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $PackageFamilyName,
+        [Parameter(Mandatory)] [string] $ExeName,
+        [Parameter()] [int] $TimeoutSeconds = 120
+    )
+    $aliasPath = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$ExeName"
+    if (Test-Path -LiteralPath $aliasPath) { return $aliasPath }
+
+    Write-SetupLog "  $ExeName alias missing for this user; registering $PackageFamilyName..."
+    try {
+        Add-AppxPackage -RegisterByFamilyName -MainPackage $PackageFamilyName -ErrorAction Stop
+    }
+    catch {
+        Write-SetupLog "  Add-AppxPackage -RegisterByFamilyName failed: $($_.Exception.Message)"
+    }
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $aliasPath) { return $aliasPath }
+        Start-Sleep -Seconds 5
+    }
+    return $null
+}
+
+Function Get-PackagedExePath {
+    <#
+        .SYNOPSIS
+            Resolves an executable that ships in a Store package: PATH first, then the per-user
+            alias (registering the package for this user if needed), then the package folder itself.
+            Returns $null when none of those exist.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $ExeName,
+        [Parameter(Mandatory)] [string] $PackageName,
+        [Parameter(Mandatory)] [string] $PackageFamilyName
+    )
+    $cmd = Get-Command -Name $ExeName -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+
+    $alias = Register-AppxForCurrentUser -PackageFamilyName $PackageFamilyName -ExeName $ExeName
+    if ($alias) { return $alias }
+
+    $package = Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+    if ($package) {
+        $inPackage = Join-Path $package.InstallLocation $ExeName
+        if (Test-Path -LiteralPath $inPackage) {
+            Write-SetupLog "  Using $ExeName from the package folder: $inPackage"
+            return $inPackage
+        }
+    }
+    return $null
+}
+
+$script:WinGetExe = $null
+Function Get-WinGetPath {
+    <#
+        .SYNOPSIS
+            The winget executable to invoke, resolved once and cached. $null if winget is unavailable.
+    #>
+    if ($script:WinGetExe -and (Test-Path -LiteralPath $script:WinGetExe)) { return $script:WinGetExe }
+    $script:WinGetExe = Get-PackagedExePath -ExeName 'winget.exe' -PackageName 'Microsoft.DesktopAppInstaller' `
+        -PackageFamilyName 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe'
+    return $script:WinGetExe
+}
+
+Function Get-WindowsTerminalPath {
+    return (Get-PackagedExePath -ExeName 'wt.exe' -PackageName 'Microsoft.WindowsTerminal' `
+        -PackageFamilyName 'Microsoft.WindowsTerminal_8wekyb3d8bbwe')
+}
+
 function Convert-WingetOutput {
     [CmdletBinding()]
     param (
@@ -274,24 +355,28 @@ function Install-WingetPackage {
     )
     
         Write-Output "Checking package $packageId... using WinGet" | timestamp
+        $winget = Get-WinGetPath
+        if (-not $winget) {
+            throw "winget is not available in this session; cannot install $packageId."
+        }
 
-        $outputRaw = winget list -e --id $packageId --accept-source-agreements --source $source
+        $outputRaw = & $winget list -e --id $packageId --accept-source-agreements --source $source
         Start-Sleep -Milliseconds 150
-        $outputRaw = winget list -e --id $packageId --accept-source-agreements --source $source
+        $outputRaw = & $winget list -e --id $packageId --accept-source-agreements --source $source
         $output = Convert-WingetOutput -wingetOutput $outputRaw -packageId $packageId
         if ($null -eq $output) {
             Write-Output "    Installing package $packageId..." | timestamp
             if ($overrideParameters -ne "") {
-                winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters" --source $source
+                & $winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --override "$overrideParameters" --source $source
             }
             else {
-                winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
+                & $winget install -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
             }
         }
         else {
             if (($null -ne $output.Available) -and ($output.Available -ne "")) {
                 Write-Output "    Upgarding package $packageId..." | timestamp
-                winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
+                & $winget upgrade -e --id $packageId -h --accept-package-agreements --accept-source-agreements --source $source
             }
             else {
                 Write-Output "    Latest version of $packageId... already installed" | timestamp
@@ -542,9 +627,12 @@ Function Complete-Phase {
 #   $state          - loaded by the caller via Get-SetupState before the first Invoke-SetupPhase
 #   $rebootPending  - set here by Request-PhaseReboot; the caller tests it at its reboot gate
 #   $rebootReason   - first reason given, for the log
+#   $failedPhases   - names of phases that threw this run; Complete-Setup turns it into exit 1
 # ---------------------------------------------------------------------------------------------
 $script:rebootPending = $false
 $script:rebootReason = ''
+$script:failedPhases = @()
+$script:SetupExitCode = 0
 
 Function Request-PhaseReboot {
     <#
@@ -593,7 +681,41 @@ Function Invoke-SetupPhase {
     catch {
         Write-Warning "--- phase '$Phase' failed: $($_.Exception.Message). It will be retried on the next run."
         Write-Output $_.ScriptStackTrace | timestamp
+        $script:failedPhases = @(@($script:failedPhases) + $Phase)
     }
+}
+
+Function Complete-Setup {
+    <#
+        .SYNOPSIS
+            Ends a setup run honestly. Always clears the resume hooks (a broken phase must not
+            re-run at every logon), but records 'done' and exits 0 only when no phase failed;
+            otherwise lists the failures and sets exit code 1 so the caller/pipeline can see it.
+            The exit code is left in $SetupExitCode for the calling script to `exit` with.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $Title
+    )
+    Clear-ResumeHooks -Name $TaskName
+    $failed = @($script:failedPhases)
+    Write-Output "" | timestamp
+    if ($failed.Count -gt 0) {
+        Write-Warning "=== $Title finished with $($failed.Count) FAILED phase(s): $($failed -join ', ') ==="
+        Write-Output "  Fix the cause and re-run the same command; completed phases are skipped." | timestamp
+        $script:SetupExitCode = 1
+    }
+    else {
+        Complete-Phase -State $State -Phase 'done'
+        Write-Output "=== $Title finished ===" | timestamp
+        $script:SetupExitCode = 0
+    }
+    Write-Output "  Runs: $($State.runCount)   Reboots: $($State.rebootCount)" | timestamp
+    Write-Output "  Phases completed: $((@($State.completedPhases) -join ', '))" | timestamp
+    Write-Output "  State file: $(Get-SetupStatePath)" | timestamp
+    Write-Output "  Re-run with -force to redo every phase from scratch." | timestamp
 }
 
 Function Test-PendingReboot {
@@ -874,6 +996,9 @@ Function Test-WslInstallSupportsFlag {
         .SYNOPSIS
             Feature-detects a `wsl --install` flag, because the available flags depend on whether
             the inbox stub or the Microsoft Store build of WSL is servicing the command.
+        .NOTES
+            Reads `wsl --help`, not `wsl --install --help`: the latter is rejected as an invalid
+            argument by Store WSL 2.7 (seen on the test VM), which made this always return false.
     #>
     [CmdletBinding()]
     param (
@@ -882,7 +1007,7 @@ Function Test-WslInstallSupportsFlag {
     try {
         $previousEncoding = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
-        $helpText = (& wsl.exe --install --help 2>&1) -join "`n"
+        $helpText = (& wsl.exe --help 2>&1) -join "`n"
         [Console]::OutputEncoding = $previousEncoding
         return ($helpText -match [regex]::Escape($Flag))
     }
@@ -1011,10 +1136,12 @@ Function Install-WslDistribution {
     if (Test-WslInstallSupportsFlag -Flag '--no-launch') {
         Write-SetupLog "  Installing $DistroName with --no-launch (no first-run prompt)..."
         & wsl.exe --install --distribution $DistroName --no-launch
-        if ($LASTEXITCODE -eq 0 -and (Test-WslDistroRegistered -DistroName $DistroName)) {
+        $installExit = $LASTEXITCODE
+        # Trust the registration list over the exit code; wsl.exe has returned non-zero on success.
+        if (Test-WslDistroRegistered -DistroName $DistroName) {
             return $true
         }
-        Write-Warning "wsl --install --no-launch exited with $LASTEXITCODE; trying the distro launcher instead."
+        Write-Warning "wsl --install --no-launch exited with $installExit and $DistroName is not registered; trying the distro launcher instead."
     }
     else {
         Write-SetupLog "  This build of wsl.exe has no --no-launch flag; using the distro launcher."

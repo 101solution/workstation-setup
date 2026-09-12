@@ -123,9 +123,15 @@ removed on request the same month.
 Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Update-SessionEnvironment`,
 `Format-Json` (pretty-prints Windows Terminal settings), plus `Install-WinGet` and
 `Install-DockerEngine` (runner script only; the latter is idempotent — skips download, service
-registration and start when each is already done). The unattended machinery lives in two regions
-at the bottom: state (`Get-/Save-/Clear-SetupState`, `Complete-Phase`), the phase runner
-(`Invoke-SetupPhase`, `Request-PhaseReboot`, `Invoke-RebootGate`), resume (`Get-ResumeCommand`,
+registration and start when each is already done). **Never call `winget` or `wt` bare**: on a
+freshly created user profile the machine-wide Store package exists but the per-user alias in
+`%LOCALAPPDATA%\Microsoft\WindowsApps` does not (seen on the Azure Win11 24H2 image, even after a
+reboot), so `Get-WinGetPath` / `Get-WindowsTerminalPath` resolve the executable, registering the
+package for the user via `Add-AppxPackage -RegisterByFamilyName` when needed. The unattended
+machinery lives in two regions at the bottom: state (`Get-/Save-/Clear-SetupState`,
+`Complete-Phase`), the phase runner (`Invoke-SetupPhase`, `Request-PhaseReboot`,
+`Invoke-RebootGate`, `Complete-Setup` — which records `done` and exits 0 only if no phase threw,
+otherwise exits 1 but still clears the resume hooks), resume (`Get-ResumeCommand`,
 `Register-ResumeTask`, `Register-ResumeRunOnce`, `Request-Reboot`, `Clear-ResumeHooks`), features
 (`Enable-WindowsFeatureSet`, `Enable-WslFeature`, `Enable-ContainerFeature`, `Test-WindowsClientSku`)
 and WSL provisioning (`Install-WslDistribution`, `Initialize-WslUser`).

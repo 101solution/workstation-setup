@@ -161,19 +161,14 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Done: retire every resume hook so a later logon does not re-run setup.
+# Done: retire every resume hook; record 'done' and exit 0 only if no phase failed.
 # ---------------------------------------------------------------------------------------------
-Complete-Phase -State $state -Phase 'done'
-Clear-ResumeHooks -Name $taskName
-
-Write-Output "" | timestamp
-Write-Output "=== Docker CE setup finished ===" | timestamp
-Write-Output "  Runs: $($state.runCount)   Reboots: $($state.rebootCount)" | timestamp
-Write-Output "  Phases completed: $((@($state.completedPhases) -join ', '))" | timestamp
-Write-Output "  State file: $(Get-SetupStatePath)" | timestamp
-Write-Output "  Verify in a NEW shell (so DOCKER_HOST is picked up):" | timestamp
-Write-Output "    docker run hello-world          # Linux daemon, tcp://127.0.0.1:2375" | timestamp
-Write-Output "    docker -c win run hello-world   # Windows daemon, tcp://127.0.0.1:2378" | timestamp
+Complete-Setup -State $state -TaskName $taskName -Title "Docker CE setup"
+if ($SetupExitCode -eq 0) {
+    Write-Output "  Verify in a NEW shell (so DOCKER_HOST is picked up):" | timestamp
+    Write-Output "    docker run hello-world          # Linux daemon, tcp://127.0.0.1:2375" | timestamp
+    Write-Output "    docker -c win run hello-world   # Windows daemon, tcp://127.0.0.1:2378" | timestamp
+}
 
 & $finishLog
-exit 0
+exit $SetupExitCode
