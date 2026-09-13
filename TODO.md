@@ -373,6 +373,21 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   runs 2/3a executed the pre-cleanup winget parser and logging; (b) step 2, the Docker CE flow;
   (c) G11 can now be judged: systemd is running in the distro via `/etc/wsl.conf` alone.
 
+  **Run 4 result (2026-09-13, from the clean snapshot, code at `d157cf0` = everything through
+  G11/G14/G20/G21/G22). PASSED end to end with zero failed phases and zero unexpected warnings:**
+  2 runs, 1 reboot, 13 minutes (05:39 → 05:52 UTC). This is the first run of the cleaned-up code:
+  - winget by return code: 17 packages "installed or upgraded", Windows Terminal "already up to
+    date", no not-found / mismatch / unknown-code lines. Bruno, Claude Code and Codex installed.
+  - `Write-Host` logging: helper diagnostics visible in the transcript for the first time on a full
+    run (pending-reboot source, each feature being enabled, the missing winget alias being
+    registered, per-package outcomes).
+  - Resume: gate → `ScheduledTask` → run 2 skipped 7 phases → `wsl-distro` in 68 s → `done`.
+  - End state verified as in run 3a: WSL user `azureadmin` uid 1000 in `sudo`, `sudo -n true` OK,
+    systemd `running`, wsl.conf correct; profile, `.gitconfig`, theme, terminal defaults, font,
+    `c:\projects`, modules present; resume task and RunOnce gone; all tools on PATH.
+  **(a) above is closed. Remaining for G7: (b) the Docker CE flow.** The VM is left in this
+  post-run state, which is exactly the precondition `docker-ce/config-docker.ps1` needs.
+
 - [x] **G11. `docker-ce/linux/systemd/` removed** (2026-09-13). Run 3a showed `systemctl
   is-system-running` = `running` in the freshly registered Ubuntu 26.04 with nothing but
   `/etc/wsl.conf` (`systemd=true`, which current Ubuntu images also ship by default). The four
