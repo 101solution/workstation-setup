@@ -17,7 +17,7 @@ param (
     $HyperV,
     [Parameter()]
     [string]
-    $DockerVersion = "20.10.23"
+    $DockerVersion = "29.8.0"
 )
 
 $global:RebootRequired = $false

@@ -373,14 +373,20 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   runs 2/3a executed the pre-cleanup winget parser and logging; (b) step 2, the Docker CE flow;
   (c) G11 can now be judged: systemd is running in the distro via `/etc/wsl.conf` alone.
 
-- [ ] **G11. Confirm whether `docker-ce/linux/systemd/` is now redundant.** `Initialize-WslUser`
-  writes `systemd=true` to `/etc/wsl.conf`, which is the modern supported way; the older hack is
-  still in the repo. Verify on a real WSL2 install before removing anything.
+- [x] **G11. `docker-ce/linux/systemd/` removed** (2026-09-13). Run 3a showed `systemctl
+  is-system-running` = `running` in the freshly registered Ubuntu 26.04 with nothing but
+  `/etc/wsl.conf` (`systemd=true`, which current Ubuntu images also ship by default). The four
+  files (`ubuntu-wsl2-systemd-script.sh`, `start-systemd-namespace`, `enter-systemd-namespace`,
+  README) and their `.gitattributes` lines are gone; CLAUDE.md and `docker-ce/README.md` updated.
 
-- [ ] **G14. Docker static binary version is stale.** `install-docker-ce.ps1` pins 20.10.23, from
-  2023 and out of support. Bump to a current release from
-  https://download.docker.com/win/static/stable/x86_64/ once G7 has proven the flow works at all.
+- [x] **G14. Docker static binary bumped 20.10.23 → 29.8.0** (2026-09-13), the newest build in
+  https://download.docker.com/win/static/stable/x86_64/ at the time (HEAD returned 200). Not yet
+  exercised: the Docker CE flow (G7 step 2) is the first thing that will download it.
   (`Install-DockerEngine`'s 20.10.21 went away with G19.)
+
+- [x] **G22. Small cleanup items** (2026-09-13): `.claude/settings.local.json` pruned to the
+  generic allow-list (the stale Chocolatey greps and this session's one-off commands removed);
+  `.gitattributes` trimmed to `*.sh` after G11. Typos and the `%` alias were already fixed in G20.
 
 - [x] **G19. Runner script removed** (2026-09-12, on request: "we should remove config github run
   action"). Deleted `config-github-runner.ps1` and `packages-runner.json`, and with them the

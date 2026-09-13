@@ -50,5 +50,5 @@ docker -c win run hello-world   # Windows daemon
 - `install-docker-ce.ps1` is a worker driven by the orchestrator. Exit code 0 is success, 3010 means
   a Windows feature still needs a restart, 1 is failure. Running it on its own never restarts the
   machine.
-- `linux/systemd/` is the older way of enabling systemd inside WSL2. The workstation setup now writes
-  `systemd=true` to `/etc/wsl.conf` instead, so it should not be needed on a current WSL build.
+- systemd inside the distro is required (the Linux installer uses `systemctl`). The workstation
+  setup enables it through `/etc/wsl.conf`; nothing extra is needed on a current WSL build.

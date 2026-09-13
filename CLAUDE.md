@@ -197,10 +197,12 @@ by design:
   `wsl -- docker version` and throws (so the phase is retried) if the daemon never answers. The
   script is therefore written to be re-runnable: the `sed` that adds `-H tcp://127.0.0.1:2375` is
   guarded by a `grep`, otherwise a second run would append a duplicate `-H`.
-- `.gitattributes` pins `*.sh` and the two `linux/systemd/` scripts to LF. Without it a Windows clone
-  with `core.autocrlf=true` checks them out CRLF and bash fails on every line.
-- `docker-ce/linux/systemd/` is the older way of enabling systemd inside WSL2. `Initialize-WslUser`
-  now writes `systemd=true` to `/etc/wsl.conf`, so it is probably redundant (TODO G11).
+- `.gitattributes` pins `*.sh` to LF. Without it a Windows clone with `core.autocrlf=true` checks
+  them out CRLF and bash fails on every line.
+- systemd inside WSL2 comes from `Initialize-WslUser` writing `systemd=true` to `/etc/wsl.conf`
+  (and current Ubuntu images ship it on by default). The old `linux/systemd/` PID-namespace hack
+  was removed on 2026-09-13 after the test VM showed `systemctl is-system-running` = `running`
+  with `/etc/wsl.conf` alone.
 
 `docker-ce/install-docker-ce.ps1` resolves `$global:ScriptFolder` from `$PSScriptRoot`, so the
 `daemon.json` copy works from a git clone as well as from a `get-latestPackages.ps1` deploy. (It was
