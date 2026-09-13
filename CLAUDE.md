@@ -8,7 +8,14 @@ Automates Windows workstation setup and Docker-without-Docker-Desktop configurat
 role-based JSON package manifests installed via WinGet and PSGallery.
 
 There is no build, lint, or test. Every change is validated by running the script as Administrator
-on a real (preferably throwaway) Windows machine and reading the transcript log.
+on a real (preferably throwaway) Windows machine and reading the transcript log. `TODO.md` is the
+record of what has and has not been validated that way. As of 2026-09-13, `config-workstation.ps1`
+(role `mrl`, default `ScheduledTask` resume) has passed end to end on an Azure Windows 11 Enterprise
+24H2 VM with the end state verified; `docker-ce/config-docker.ps1` has **not** yet been run on a
+real machine. The throwaway VM, its clean snapshot and the `az vm run-command` driver scripts are
+described under G7 in `TODO.md`. Cheap local checks that are worth running before any push: parse
+every `.ps1` with `[System.Management.Automation.Language.Parser]::ParseFile`, `bash -n` the shell
+scripts, and `ConvertFrom-Json` every manifest.
 
 ## Entry Points
 
@@ -92,8 +99,9 @@ always defined by the time it is called. Keep it that way.
 
 A plain `wsl --install -d Ubuntu` launches the distro, whose first-run OOBE blocks on a UNIX
 username and password — fatal for an unattended build. `Install-WslDistribution` uses `--no-launch`
-where the installed `wsl.exe` supports it (feature-detected at runtime from `wsl --install --help`,
-since the inbox stub and the Store build expose different flags) and falls back to the per-distro
+where the installed `wsl.exe` supports it (feature-detected at runtime from `wsl --help`, since the
+inbox stub and the Store build expose different flags; note `wsl --install --help` is *rejected* by
+Store WSL 2.7, which is what silently broke this on the test VM) and falls back to the per-distro
 launcher's `install --root`. `Initialize-WslUser` then creates the user entirely from the Windows
 side via `wsl --user root`, giving it **passwordless sudo** (the repo's Docker CE scripts are full
 of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (required by

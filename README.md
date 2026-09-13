@@ -16,6 +16,10 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
+Last validated end to end on 2026-09-13: a fresh Windows 11 Enterprise 24H2 VM, role `mrl`, one
+reboot, 13 minutes, with WSL Ubuntu, the shell profile, Windows Terminal and every package verified
+afterwards.
+
 ## Available Roles
 
 | Role | Description |
@@ -91,7 +95,8 @@ powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
 
 It installs a Windows Docker daemon and a Linux one inside WSL2 side by side, with the same
 unattended phase/resume behaviour and the same `-resumeMethod`, `-noReboot` and `-force` switches.
-Details in [docker-ce/README.md](docker-ce/README.md).
+Details in [docker-ce/README.md](docker-ce/README.md). Unlike the workstation setup, this flow has
+not yet been validated on a fresh machine.
 
 ## Terminal
 

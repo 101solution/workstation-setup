@@ -7,6 +7,10 @@ Two daemons end up running side by side:
 - **Windows** on `tcp://127.0.0.1:2378` (and `npipe://`). A `win` context is created for it, so
   `docker -c win ...` targets Windows containers.
 
+> **Status:** rewritten as a phase-based, resumable orchestrator in September 2026 but **not yet run
+> end to end on a real machine**. The workstation setup it depends on has been. Treat the steps
+> below as the design until `TODO.md` (G7 step 2) records a passing run.
+
 ## Prerequisite
 
 Run the [workstation setup](../README.md#quick-start-new-vm) first. It enables WSL2 and registers an

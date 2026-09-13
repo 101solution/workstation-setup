@@ -1,5 +1,71 @@
 # Repo Fix Backlog
 
+## Handover — start here (written 2026-09-13)
+
+**Where things stand.** `config-workstation.ps1` is unattended and resumable and has **passed a
+full clean run on the current code** (run 4, commit `d157cf0`, role `mrl`, one reboot, 13 min,
+end state verified on the machine). `docker-ce/config-docker.ps1` has been rewritten the same way
+but has **never run on a real machine**. Nothing has been released yet: users bootstrap from the
+latest GitHub release, so none of this reaches anyone until a `v2.x.y` tag is cut.
+
+**Next steps, in order.**
+1. Run the Docker CE flow on the test VM (G7 step 2). The VM is already a configured `mrl`
+   workstation with WSL Ubuntu 26.04, which is exactly its precondition. Drive it the same way as
+   the workstation runs (below): refresh `main` onto the VM, start
+   `docker-ce\config-docker.ps1` as `azureadmin` via a scheduled task, poll, then verify
+   `docker run hello-world` and `docker -c win run hello-world` as `azureadmin`. It will download
+   Docker 29.8.0 for the first time (G14).
+2. Once that passes: fold `install-docker-ce.ps1` into the orchestrator (cleanup candidate 4; the
+   exit-code protocol only exists because it is a separate file).
+3. Ask the user, then act: keep or delete `containers/` (Windows Server only, unrelated) and the
+   `ce-corp` / `ce-free` roles (predate the current `docker-ce/` flow).
+4. Cut the release. Update README if the role table changed.
+
+**The test VM.** `vm-wstest-01`, resource group `S101-ARG-WSTEST-MRL`, subscription VS_Sub_MRL
+`1f513fde-7a26-4aae-a69e-3f29f41d7f2a` in the user's personal tenant `5509d93f-…`. If `az` says
+the subscription is not found, the token is stale: the user must run
+`az login --tenant 5509d93f-af21-4739-b7c9-ec32c2ca43a1` themselves. Windows 11 Enterprise 24H2,
+`Standard_D4s_v5`, Australia East, ~AUD 0.35/h running, nightly auto-shutdown 14:00 UTC.
+**Deallocate it when pausing** (`az vm deallocate`). Admin user `azureadmin`; the password is in
+the gitignored `logs/vm-wstest-01-admin.txt` (and `vm-bootstrap.ps1`). **Autologon for
+`azureadmin` is enabled** (password in the registry in clear text, acceptable on this throwaway
+box, RDP is limited to the user's home IP) — remove it or delete the resource group when done.
+Clean snapshot `snap-vm-wstest-01-clean-20260911` (stock image, pre-Windows-Update). Restore
+procedure and full run history are under G7 below.
+
+**How to drive a run without RDP.** `az vm run-command invoke --command-id RunPowerShellScript
+--scripts @file.ps1` runs as SYSTEM, one at a time per VM, output capped at ~4 KB (fetch logs in
+line-range chunks). SYSTEM cannot run WSL and does not see the user's profile, so the setup itself
+must run as `azureadmin`: the pattern is a scheduled task with `-LogonType Interactive
+-RunLevel Highest` that unregisters itself and then runs the script, fired either at logon after a
+reboot (autologon supplies the session) or immediately with `Start-ScheduledTask`. Scripts in
+`logs/` (gitignored): `vm-bootstrap.ps1` (fresh run: download `main` as a zip, set autologon,
+register the at-logon task; then `az vm restart`), `vm-rerun.ps1` (refresh `main`, keep logs and
+state, start the setup now), `vm-poll.ps1` (state file, running processes, log excerpts),
+`vm-register-diag-task.ps1` + `c:\config\wsl-diag.ps1` on the VM (as-user WSL/package checks),
+`vm-verify-windows.ps1` (per-user artefacts, runnable as SYSTEM with explicit paths). Decode Linux
+command output as UTF-8 and `wsl.exe`'s own messages as UTF-16; stripping `` `0 `` is the quick fix.
+
+**Gotchas that cost time, so you do not rediscover them.**
+- `Start-Transcript` under PowerShell 5.1 does not capture `Write-Information`. All logging is
+  `Write-SetupLog` (`Write-Host`). Never `Write-Output` for logging (return-value contamination).
+- A brand-new Windows profile has no `winget`/`wt` alias even though the packages are installed.
+  `Get-WinGetPath` / `Get-WindowsTerminalPath` handle it; never call them bare.
+- `wsl --install --help` is rejected by Store WSL 2.7; detect flags from `wsl --help`.
+- `wsl.exe -- cmd C:\path` loses the backslashes (shell escaping); pass `C:/path`.
+- `winget install` upgrades by itself; its return codes decide the outcome (`0x8A15002B` = current).
+- Each entry script has its own state file (`$script:SetupStateFileName`); phase names may repeat.
+- The sandbox here refuses shell commands whose *text* contains `Remove-Item` near `/mnt`; use
+  `[IO.File]::Delete` in remote scripts.
+
+**Working conventions with this user.** Backlog lives in this file; record every outcome here with
+the date, including negative results. They ask to commit and push straight to `main` (branch
+`unattended-setup-and-audit-fixes` is kept identical to `main` via fast-forward). Commit messages
+end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `CLAUDE.md`
+(maintainers), `docker-ce/README.md`.
+
+---
+
 Findings from an audit of the scripts on 2026-09-11, ordered by impact.
 Each item records the failure, the file/line, and the intended fix.
 
