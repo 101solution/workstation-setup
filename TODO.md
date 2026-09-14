@@ -69,6 +69,10 @@ command output as UTF-8 and `wsl.exe`'s own messages as UTF-16; stripping `` `0 
 - Each entry script has its own state file (`$script:SetupStateFileName`); phase names may repeat.
 - The sandbox here refuses shell commands whose *text* contains `Remove-Item` near `/mnt`; use
   `[IO.File]::Delete` in remote scripts.
+- **Never pass an Azure resource ID to `az` from Git Bash.** MSYS turns the leading `/` into
+  `C:/Program Files/Git/...`, and the resulting errors point at azure-cli rather than at the shell
+  (`KeyError: 'id'`, `LinkedInvalidPropertyId`). Use the PowerShell tool for any `az` call taking an
+  ID, or prefix `MSYS_NO_PATHCONV=1`.
 
 **Working conventions with this user.** Backlog lives in this file; record every outcome here with
 the date, including negative results. They ask to commit and push straight to `main` (branch
@@ -351,9 +355,19 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   $new = "$vm-osdisk-$(Get-Date -Format yyyyMMddHHmm)"
   az vm deallocate --subscription $sub -g $rg -n $vm
   az disk create --subscription $sub -g $rg -n $new --source snap-vm-wstest-01-clean-20260911 --sku Premium_LRS
-  az vm update --subscription $sub -g $rg -n $vm --os-disk $new
+  # Pass the disk's full resource ID, and RUN THIS FROM POWERSHELL, not Git Bash. Under Git Bash,
+  # MSYS rewrites the leading slash of `/subscriptions/...` into `C:/Program Files/Git/subscriptions/...`,
+  # which surfaces as a confusing `KeyError: 'id'` from vm/custom.py or a LinkedInvalidPropertyId
+  # naming a C:/Program Files/Git/... path. azure-cli itself is fine. (`MSYS_NO_PATHCONV=1` also
+  # works if you must use bash.) The failure is quiet enough that a following `az vm start` happily
+  # brings the VM up on the OLD disk - that happened twice on 2026-09-14 - so ALWAYS re-read
+  # storageProfile.osDisk.name and confirm it BEFORE starting.
+  $newId = az disk show --subscription $sub -g $rg -n $new --query id -o tsv
+  az vm update --subscription $sub -g $rg -n $vm --os-disk $newId
   az vm start --subscription $sub -g $rg -n $vm
-  az disk delete --subscription $sub -g $rg -n $old --yes   # once the VM is confirmed up
+  az vm show --subscription $sub -g $rg -n $vm -d --query "{power:powerState,disk:storageProfile.osDisk.name}"
+  # Keep the previous disk until the new run has passed, in case its evidence is still needed:
+  # az disk delete --subscription $sub -g $rg -n $old --yes
   ```
   Tear everything down with `az group delete -n $rg --subscription $sub --yes --no-wait`.
 

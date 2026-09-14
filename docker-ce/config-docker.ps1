@@ -223,6 +223,24 @@ Function Start-WslDistro {
     )
     Write-SetupLog "  Starting WSL distro '$DistroName' ..."
     & wsl.exe --distribution $DistroName -- /bin/true 2>&1 | Out-Null
+    return (Wait-LinuxDockerEndpoint -TimeoutSeconds $TimeoutSeconds)
+}
+
+Function Wait-LinuxDockerEndpoint {
+    <#
+        .SYNOPSIS
+            Waits for 127.0.0.1:2375 to answer from Windows, without touching the distro.
+        .DESCRIPTION
+            Deliberately does NOT run any `wsl` command: invoking wsl starts the distro, which is
+            the state being measured. That is exactly how the old docker-linux check ended up
+            unable to fail (G27), so the wait that replaces it must not repeat the trick.
+        .OUTPUTS
+            [bool] Return value is tested.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter()] [int] $TimeoutSeconds = 90
+    )
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         if (Test-TcpPort -Port 2375) { return $true }
@@ -318,17 +336,34 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'wsl-autostart' -Body {
     $runAsUser = "$($env:USERDOMAIN)\$($env:USERNAME)"
-    Write-SetupLog "Registering at-logon task '$autostartTaskName' to start WSL for $runAsUser ..."
-    $action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument "--distribution $distroName -- /bin/true"
+    Write-SetupLog "Registering at-logon keepalive task '$autostartTaskName' for $runAsUser ..."
+    # `sleep infinity`, not `/bin/true`: merely *starting* the distro is not enough, because WSL2
+    # shuts an idle VM down about a minute after the last session closes. Measured on the test VM -
+    # the clean install reported success at 03:36:24 and bare `docker` was refused by 03:39:49, with
+    # no reboot involved. Holding one session open for the whole logon keeps the relayed
+    # 127.0.0.1:2375 port alive; verified across a 150 s wait (well past the idle timeout) with the
+    # distro still running and the listener still present.
+    # conhost --headless runs it with no console window: MainWindowHandle is 0, so nothing is left
+    # sitting on the user's desktop all session.
+    $action = New-ScheduledTaskAction -Execute 'conhost.exe' `
+        -Argument "--headless wsl.exe --distribution $distroName -- sleep infinity"
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $runAsUser
-    # Deliberately not RunLevel Highest: starting the distro needs no elevation and this fires at
+    # Deliberately not RunLevel Highest: holding a WSL session needs no elevation and this fires at
     # every logon, so it should hold the least privilege that works.
     $principal = New-ScheduledTaskPrincipal -UserId $runAsUser -LogonType Interactive
+    # TimeSpan::Zero is "no time limit" to Task Scheduler - required, since the task never exits.
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -ExecutionTimeLimit ([TimeSpan]::FromMinutes(5))
+        -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName $autostartTaskName -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings `
-        -Description 'Starts the WSL2 distro so the Linux Docker daemon is reachable on 127.0.0.1:2375' -Force | Out-Null
+        -Description 'Holds a WSL2 session open so the Linux Docker daemon stays reachable on 127.0.0.1:2375' -Force | Out-Null
+
+    # Start it now, so this session is covered too rather than only sessions after the next logon.
+    Start-ScheduledTask -TaskName $autostartTaskName
+    if (-not (Wait-LinuxDockerEndpoint)) {
+        throw "The keepalive task started but tcp://127.0.0.1:2375 still does not answer from Windows. Check 'Get-ScheduledTaskInfo -TaskName $autostartTaskName' and 'wsl -l --running'."
+    }
+    Write-SetupLog "  Keepalive running; tcp://127.0.0.1:2375 answers from Windows."
 }
 
 # ---------------------------------------------------------------------------------------------
