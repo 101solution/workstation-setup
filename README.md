@@ -16,9 +16,15 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
-Last validated end to end on 2026-09-14 (`v2.4.0`): a fresh Windows 11 Enterprise 24H2 VM, role
-`mrl` — 9 phases, one reboot, ~15 minutes — with WSL Ubuntu, the shell profile, Windows Terminal and
-every package verified afterwards, followed by the Docker CE flow and both daemons.
+Last validated end to end on 2026-09-14 by running **this exact one-liner** against `v2.4.0` on a
+fresh Windows 11 Enterprise 24H2 VM: role `mrl`, 9 phases, one reboot, ~13.5 minutes, followed by
+the Docker CE step and both daemons verified.
+
+> **Note:** the one-liner cannot set your git identity — it only forwards `-role`. Afterwards, run:
+> ```powershell
+> git config --global user.name "Your Name"; git config --global user.email "you@example.com"
+> ```
+> or use the [manual setup](#manual-setup) below with `-gitUser`/`-gitEmail`.
 
 ## Available Roles
 

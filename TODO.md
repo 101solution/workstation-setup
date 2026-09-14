@@ -345,6 +345,38 @@ Nothing blocking. `v2.4.0` is released and validated; the items below are housek
   verify the daemons through the HTTP API (`GET /version`, `/containers/{id}/logs`) rather than the
   CLI, and remember `Invoke-WebRequest` needs `-UseBasicParsing` on PowerShell 5.1.
 
+- [ ] **G35. The documented Quick Start leaves git with no identity.** Found by run 9, which is
+  the first test to take the *documented* path rather than passing parameters directly.
+  `get-latestPackages.ps1` accepts and forwards **only** `-role`, and the shipped `.gitconfig` has
+  no `[user] name`/`email`, so after the README one-liner `git config --global user.name` and
+  `user.email` are both **empty** (measured on the VM). The user's first `git commit` then fails
+  with *\"Please tell me who you are\"*. `config-workstation.ps1` has had `-gitUser`/`-gitEmail`
+  all along - they are simply unreachable from the one-liner every user is told to run, and every
+  previous VM run passed them explicitly, which is why this never showed up.
+  *Fix:* add `-gitUser`/`-gitEmail` to `get-latestPackages.ps1` and forward them, then document
+  them in the README Quick Start.
+
+- [x] **RUN 9 (2026-09-14): the published v2.4.0 release validated end to end. PASSED.**
+  Everything before this tested `main` via a bespoke driver; run 9 executed the README one-liner
+  verbatim on a machine restored from the clean snapshot, so it is the first test of the actual
+  distribution path - `get-latestPackages.ps1` fetched from raw `main`, the `/releases` lookup,
+  the zipball, and the deploy into `c:\config\workstation`.
+  - Bootstrap: downloaded (1774 bytes), resolved the release, extracted and renamed. Leftover
+    sha folder = 0 and `workstation.zip` absent, which is what refuted the G34 claim.
+  - `config-workstation.ps1 -role mrl`: 07:19:09 -> 07:32:34, ~13.5 min, 9 phases, 1 reboot,
+    `resumeMethod=ScheduledTask`. The winget per-user alias fix (G15) fired as designed:
+    *\"winget.exe alias missing for this user; registering...\"* then used the resolved path.
+  - **Artifact identity confirmed:** no `.git` in `c:\config\workstation` (so it really is the
+    zipball), 19 files, and the removals shipped - no `config-github-runner.ps1`, no `containers/`.
+  - `docker-ce\config-docker.ps1` run from the deployed release tree: 6 phases, 1 reboot, `done`.
+  - Both daemons verified through the HTTP API, not the CLI: `GET /version` ->
+    `29.8.0 os=linux arch=amd64 api=1.56`, and a container pulled, created and started via the
+    API reached `state=exited exitCode=0` with `Hello from Docker!` in its log. The keepalive was
+    holding the distro at the time (1 listener on 2375).
+  *Harness note:* `/containers/create` does **not** auto-pull - it 404s on a missing image. The
+  earlier API test only worked because a CLI run had already cached the image. Pull explicitly via
+  `POST /images/create?fromImage=...&tag=...` first.
+
 - [x] **G7. Run it end to end on a throwaway VM. DONE 2026-09-13/14** (runs 1-8; run 4 closed the
   workstation half, run 7 the Docker CE half). Originally: nothing had executed on a real machine.
   Verified so far only by: parser checks on all `.ps1`, `bash -n` on both shell scripts, JSON
@@ -762,6 +794,13 @@ Nothing blocking. `v2.4.0` is released and validated; the items below are housek
 ---
 
 ## Checked and NOT a bug
+
+- **`get-latestPackages.ps1` re-runs fine** (claimed as a bug 2026-09-14, refuted the same day by
+  run 9). The claim was that `ExtractToDirectory` would throw on a second run because
+  `c:\config\101solution-workstation-<sha>` already existed. It does not: line 37's `Rename-Item`
+  *consumes* that folder into `c:\config\workstation`, so it is never left behind for the next
+  extract to collide with. Measured on the VM after a real bootstrap: leftover sha folders = 0,
+  leftover `workstation.zip` = absent. Recorded because the misreading looked plausible.
 
 - `-role min` leaves `$packageConfig` undefined, but the resulting `$null` is dropped by the
   `Select-Object` projection at `config-workstation.ps1:47`. No bogus package entry is produced.
