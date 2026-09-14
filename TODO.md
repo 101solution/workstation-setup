@@ -330,7 +330,7 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 Nothing blocking. `v2.4.0` is released and validated; the items below are housekeeping.
 
-- [ ] **G32. Retire the test VM.** `vm-wstest-01` in `S101-ARG-WSTEST-MRL` is left **running**
+- [x] **G32. Retire the test VM. DONE 2026-09-14.** Deallocated, and autologon plus the cleartext `DefaultPassword` removed from the registry (`AutoAdminLogon=0`, `DefaultPassword present=False`, `DefaultUserName` cleared) - the credential exposure is gone and compute cost is zero. All test scheduled tasks had self-unregistered; the product's own `docker-ce-wsl-autostart` keepalive was deliberately left in place. The clean snapshot `snap-vm-wstest-01-clean-20260911` and the current disk are retained so the next release can be validated the same way; reversible, nothing destroyed. **Two superseded OS disks remain unattached and are now pure cost** (`vm-wstest-01-osdisk-202609131329` from runs 5b/6, `...-202609140303` from run 7): delete with `az disk delete --subscription $sub -g $rg -n <name> --yes` once their evidence is definitely not wanted. Original state: left **running**
   after run 7, with autologon enabled and its password in the registry in clear text, plus a spare
   OS disk (`vm-wstest-01-osdisk-202609131329`) kept only so run-5b/6 evidence stayed inspectable.
   That evidence has served its purpose now the release is cut. Either
@@ -338,14 +338,14 @@ Nothing blocking. `v2.4.0` is released and validated; the items below are housek
   `az group delete -n S101-ARG-WSTEST-MRL --subscription $sub --yes --no-wait` to remove it
   entirely. It costs ~AUD 0.35/h while running and auto-shuts-down at 14:00 UTC.
 
-- [ ] **G33. `docker run` output is invisible in the repo's own test harness.** Native `docker` CLI
+- [x] **G33. `docker run` output is invisible in the repo's own test harness. DONE 2026-09-14** - the guidance now lives in CLAUDE.md under \"Verifying on a real machine\", alongside the other measurement traps (probes that start what they measure, idempotency guards that check a proxy, the run-command output cap, MSYS mangling resource IDs, and parse-checking generated remote scripts). Original finding: native `docker` CLI
   stdout comes back empty inside a non-interactive scheduled task, even through
   `cmd /c ... > file`. It is only a *testing* problem - interactive users see output normally - but
   it produced two false alarms during run 7 and cost real time. If the VM harness is used again,
   verify the daemons through the HTTP API (`GET /version`, `/containers/{id}/logs`) rather than the
   CLI, and remember `Invoke-WebRequest` needs `-UseBasicParsing` on PowerShell 5.1.
 
-- [ ] **G35. The documented Quick Start leaves git with no identity.** Found by run 9, which is
+- [x] **G35. The documented Quick Start leaves git with no identity. FIXED and VERIFIED 2026-09-14.** Found by run 9, which is
   the first test to take the *documented* path rather than passing parameters directly.
   `get-latestPackages.ps1` accepts and forwards **only** `-role`, and the shipped `.gitconfig` has
   no `[user] name`/`email`, so after the README one-liner `git config --global user.name` and
@@ -353,8 +353,17 @@ Nothing blocking. `v2.4.0` is released and validated; the items below are housek
   with *\"Please tell me who you are\"*. `config-workstation.ps1` has had `-gitUser`/`-gitEmail`
   all along - they are simply unreachable from the one-liner every user is told to run, and every
   previous VM run passed them explicitly, which is why this never showed up.
-  *Fix:* add `-gitUser`/`-gitEmail` to `get-latestPackages.ps1` and forward them, then document
-  them in the README Quick Start.
+  *Fixed* in `get-latestPackages.ps1` (`51dd111`): both parameters added and forwarded when
+  non-blank, built as an argument array so a name with spaces stays one argument. Because that
+  file is fetched from raw `main`, **the fix is live without a new release**. Additive and
+  backwards-compatible: argument construction unit-tested over five cases, including that the
+  no-git-args call is byte-identical to before (6 elements) and that whitespace-only is ignored.
+  *Verified on the VM:* `user.name`/`user.email` empty beforehand; un-recorded only the `shell`
+  phase; ran the real one-liner with `-gitUser \"Ada Lovelace\" -gitEmail ada@example.com`; the
+  bootstrap it fetched was the fixed one (2598 bytes, `$gitUser` present) and afterwards
+  `user.name = [Ada Lovelace]`, `user.email = [ada@example.com]`. The transcript also confirms the
+  phase contract: every other phase logged *already complete, skipping* and only `shell` ran.
+  README's Quick Start now shows the variant with both parameters.
 
 - [x] **RUN 9 (2026-09-14): the published v2.4.0 release validated end to end. PASSED.**
   Everything before this tested `main` via a bespoke driver; run 9 executed the README one-liner

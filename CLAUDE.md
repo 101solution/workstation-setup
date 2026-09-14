@@ -112,6 +112,39 @@ side via `wsl --user root`, giving it **passwordless sudo** (the repo's Docker C
 of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (required by
 `docker-ce/linux/install-docker-ce.sh`, which drives `systemctl`).
 
+## Verifying on a real machine
+
+`TODO.md` holds the VM details and run history. What matters here is *how to measure*, because
+nine bugs (G23-G31) plus G35 were found only by running this on real hardware, and several were
+initially missed by checks that could not fail:
+
+- **A probe must not create the state it is checking.** The original `docker-linux` readiness
+  check ran `wsl -- docker version`, which *starts the distro* - so it passed on a machine where
+  bare `docker` was broken (G27). Anything that measures WSL must use `wsl -l -v`,
+  `wsl -l --running` or `netstat`, none of which start a distro, and must run **before** anything
+  that does.
+- **An idempotency guard must check the end state, not a proxy.** Gating the Windows install on
+  \"is the service registered\" let a part-failed install report success on retry, because the
+  service is created several steps before `daemon.json` and the `win` context (G25).
+- **Native `docker` CLI stdout comes back EMPTY inside a non-interactive scheduled task**, even
+  through `cmd /c ... > file`. `exit=0` is not evidence there; it produced two false alarms. Verify
+  the daemons through the HTTP API instead: `GET /version` (check `Os=linux` to prove you reached
+  the WSL2 daemon and not the Windows one), `/_ping`, and for a real container
+  `POST /images/create?fromImage=hello-world&tag=latest` **then** create/start/`/logs` - note
+  `/containers/create` does *not* auto-pull and 404s on a missing image.
+- `Invoke-WebRequest` needs `-UseBasicParsing` under Windows PowerShell 5.1.
+- **Never pass an Azure resource ID to `az` from Git Bash**: MSYS rewrites the leading `/` into
+  `C:/Program Files/Git/...` and the resulting errors blame azure-cli. Use PowerShell, or
+  `MSYS_NO_PATHCONV=1`. After an OS-disk swap, **re-read `storageProfile.osDisk.name` and confirm
+  it before starting the VM** - a failed swap is quiet, and `az vm start` will happily boot the
+  old disk, which silently invalidates the whole test.
+- `az vm run-command` output is capped near 4 KB. A poller that gets truncated before the
+  interesting part is worse than none - it hid a 20-minute hang. Print narrowly.
+- **Parse-check generated remote scripts locally** with
+  `[System.Management.Automation.Language.Parser]::ParseFile` before sending them. Three
+  diagnostics failed silently from quoting bugs (nested `@'...'@` here-strings do not work, and
+  `\\\"` is not an escape in PowerShell), and each time the silence looked like data about the VM.
+
 ## Role Manifests
 
 `packages-<role>.json`. Current schema — note the key names changed during the WinGet migration:
