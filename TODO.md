@@ -573,6 +573,40 @@ Design is documented in the "Unattended execution and reboot resume" section of 
     `netstat` shows nothing on 2375 and bare `docker version` exits 1; `wsl -d Ubuntu -- /bin/true`
     => 2375 LISTENING within ~15 s and `docker run hello-world` exits 0.
 
+- [x] **G31. THE ACTUAL CAUSE of both `docker-linux` hangs: `gpg --dearmor -o` blocks on an
+  overwrite prompt on every re-run** (found and fixed 2026-09-14, after G30 got it wrong).
+  `curl -fsSL .../gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg`
+  asks *"File exists. Overwrite? (y/N)"* when the keyring is already there, and its stdin is the
+  curl pipe rather than a terminal, so it waits forever. Measured in Ubuntu WSL with gpg 2.4.9,
+  with `timeout` making the answer unambiguous:
+    - file absent (fresh install): `rc=0`, 2760 bytes written
+    - file present, current command: **`rc=124`** - blocked, killed by timeout
+      (`gpg: signal Terminated caught ... exiting`)
+    - file present, with `--yes`: `rc=0`, and the keyring is still a valid OpenPGP key carrying
+      Docker's fingerprint `9DC858229FC7DD38854AE2D88D81803C0EBFCD88`
+  This single line accounts for every observation in both hangs: fresh installs pass, re-runs
+  wedge, `apt term.log` shows no new activity, no dpkg/apt locks are held, and `dockerd`'s
+  elapsed time matches `init`'s (so `systemctl restart docker`, the script's last line, never
+  ran). *Fixed:* `gpg --yes --dearmor`, plus `export DEBIAN_FRONTEND=noninteractive` at the top
+  of the script, since nothing in it may ever wait for input.
+
+  **Correction to G30 below.** G30 claimed the final `sudo shutdown -r now` caused run 6's hang.
+  That was inferred from the script sitting at what looked like its last line, with a process
+  filter that matched `systemd` but not `systemctl`/`sudo`/`usermod` and so could not have shown
+  the real child. It is wrong: run 7b hung identically with no `shutdown` in the script at all.
+  Removing the reboot is still correct on its own merits - `systemctl daemon-reload` makes it
+  redundant, and docker was demonstrably `active` and listening on 2375 without it - but it did
+  **not** fix the hang. The part of G30 that genuinely helped was the 30-minute bounded wait,
+  which is what turned an indefinite wedge into a clean retryable failure.
+
+  **Hypotheses refuted along the way; do not retry them.**
+    - Binding dockerd to `0.0.0.0` (G26 first draft). The `127.0.0.1` bind is correct; the
+      endpoint was unreachable because the distro was not running.
+    - `az vm update --os-disk` being broken in azure-cli 2.81.0. It was Git Bash: MSYS rewrote the
+      leading `/` of the disk's resource ID into `C:/Program Files/Git/...`. Works from PowerShell.
+    - The WSL localhost relay only capturing binds made while it is live. Restarting docker
+      changed nothing; the relay was already up at baseline.
+
 - [x] **G30. `install-docker-ce.sh`'s final `sudo shutdown -r now` hung the whole install, and
   `docker-linux` had no timeout to escape it** (found 2026-09-14 by run 6, the `-force` pass).
   The phase started at 02:34:08 and logged nothing for 20 minutes. Inside the distro:

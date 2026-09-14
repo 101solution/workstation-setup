@@ -1,8 +1,19 @@
 #!/bin/bash
 
+# Driven unattended by config-docker.ps1, so nothing here may wait for input. apt honours
+# DEBIAN_FRONTEND; the `gpg --yes` below is the other half of that rule.
+export DEBIAN_FRONTEND=noninteractive
+
 sudo apt-get update
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+# --yes is load-bearing: without it, `gpg --dearmor -o` on an EXISTING file blocks on an
+# interactive "File exists. Overwrite?" prompt whose stdin is the curl pipe, not a terminal.
+# That hung this script indefinitely on every re-run (TODO G31) - twice on the test VM, for 20
+# and 30 minutes - while fresh installs were unaffected because the file was absent. Measured in
+# Ubuntu WSL with gpg 2.4.9: file absent rc=0; file present rc=124 (blocked, killed by timeout);
+# file present with --yes rc=0, keyring still a valid OpenPGP key with Docker's fingerprint
+# 9DC858229FC7DD38854AE2D88D81803C0EBFCD88.
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io
