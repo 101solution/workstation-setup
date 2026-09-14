@@ -120,7 +120,7 @@ of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (req
 
 - **`packages-min.json` is always merged as the base layer**, unioned with the role file and de-duped
   on `id`/`source`/`override`. The one exception is `-role min`, where the base is used alone.
-- Roles: `mrldev` (default), `mrl`, `cloudEngineer`, `developer`, `ce-corp`, `ce-free`, `min`.
+- Roles: `mrldev` (default), `mrl`, `cloudEngineer`, `developer`, `min`.
   (`runner` and `config-github-runner.ps1` were removed on 2026-09-12; runner boxes are out of scope.)
 - `override` is forwarded to `winget install --override`, so its contents are the *underlying
   installer's* flag syntax, not WinGet's — e.g. VS Enterprise's `--add Microsoft.VisualStudio.Workload.*`
@@ -151,8 +151,8 @@ otherwise exits 1 but still clears the resume hooks), resume (`Get-ResumeCommand
 and WSL provisioning (`Install-WslDistribution`, `Initialize-WslUser`).
 
 Every reboot continuation goes through `Request-Reboot` (`Register-ResumeTask`, running as the
-invoking user). The old `ContainerBootstrap` task name survives in `docker-ce/install-docker-ce.ps1`
-only so a stale task from an earlier version gets unregistered.
+invoking user). The old `ContainerBootstrap` task is gone entirely, along with the
+`install-docker-ce.ps1` worker that used to unregister stale copies of it.
 
 `Install-WinGetPackage` is a single `winget install` call whose outcome is read from winget's
 documented **return codes**, not its text: `0` installed/upgraded, `0x8A15002B` / `0x8A150061` /
@@ -186,13 +186,14 @@ Transcript logs go to `$PSScriptRoot\logs\` (gitignored), renamed on exit to
 
 ## Docker CE (`docker-ce/`)
 
-`docker-ce/config-docker.ps1` is the orchestrator, phase-based like the workstation script: it
-enables the Containers feature (plus Hyper-V on client SKUs) with `-NoRestart`, sets the user-scope
-env vars, passes the single reboot gate, then runs `./install-docker-ce.ps1` for Windows and
-`wsl -d Ubuntu -- bash ./install-docker-ce.sh` for Ubuntu. `install-docker-ce.ps1` is a worker that
-never restarts the machine itself: exit 0 success, 3010 a feature still needs a restart (the
-orchestrator then runs its gate again), 1 failure. Two daemons run side by side on distinct ports,
-by design:
+`docker-ce/config-docker.ps1` is the whole Windows side, phase-based like the workstation script:
+`containers-feature` (Containers plus Hyper-V on client SKUs, `-NoRestart`), `environment`, the
+single reboot gate, then `docker-windows`, `docker-linux` and `wsl-autostart`. The separate
+`install-docker-ce.ps1` worker was folded in on 2026-09-14: once feature enabling moved to
+`containers-feature`, the worker's only reason to be its own process — exiting 3010 to ask for a
+reboot — became unreachable, and the orchestrator's second reboot gate with it. Phases now just
+throw, and `Invoke-SetupPhase` retries them. Two daemons run side by side on distinct ports, by
+design:
 
 - **Linux (WSL2) daemon on `tcp://127.0.0.1:2375`** — patched into `/etc/systemd/system/docker.service` by `sed`.
 - **Windows daemon on `tcp://127.0.0.1:2378`** — via `daemon.json` (TCP + `npipe://`).
@@ -200,11 +201,19 @@ by design:
   for 2378, so `docker -c win` targets Windows. Verify both:
   `docker run hello-world` and `docker -c win run hello-world`.
 - `WSLENV`/`BASH_ENV` are set so the Windows-side `DOCKER_HOST` propagates into WSL.
-- `install-docker-ce.sh` ends in `sudo shutdown -r now`, restarting WSL. That kills the `wsl.exe`
-  session, so its exit code is meaningless; the `docker-linux` phase instead polls
-  `wsl -- docker version` and throws (so the phase is retried) if the daemon never answers. The
-  script is therefore written to be re-runnable: the `sed` that adds `-H tcp://127.0.0.1:2375` is
-  guarded by a `grep`, otherwise a second run would append a duplicate `-H`.
+- **Bare `docker` only works while the WSL distro is running.** The relayed `127.0.0.1:2375` port
+  exists only then, and a Windows-side TCP connect does **not** start the distro. Since
+  `install-docker-ce.sh` ends in `sudo shutdown -r now` and WSL2 stops idle distros anyway, every
+  reboot would otherwise leave `docker ps` failing. The `wsl-autostart` phase registers an at-logon
+  task running `wsl -d Ubuntu -- /bin/true`. Measured on the test VM: distro stopped means nothing
+  listening and bare `docker` exits 1; after the no-op, 2375 answers within ~15 s.
+- `install-docker-ce.sh` ends in `sudo shutdown -r now`, so its exit code is meaningless. The
+  `docker-linux` phase verifies **what the client actually uses**: a TCP connect to
+  `127.0.0.1:2375` from Windows, via `Start-WslDistro`/`Test-TcpPort`, throwing if it never answers.
+  It must not go back to `wsl -- docker version`: that probes the unix socket *inside* the distro
+  **and starts the distro**, so it cannot fail — it reported success on a run where bare `docker`
+  was broken (TODO G27). The shell script is written to be re-runnable: the `sed` adding
+  `-H tcp://127.0.0.1:2375` is `grep`-guarded, or a second run would append a duplicate `-H`.
 - `.gitattributes` pins `*.sh` to LF. Without it a Windows clone with `core.autocrlf=true` checks
   them out CRLF and bash fails on every line.
 - systemd inside WSL2 comes from `Initialize-WslUser` writing `systemd=true` to `/etc/wsl.conf`
@@ -212,14 +221,15 @@ by design:
   was removed on 2026-09-13 after the test VM showed `systemctl is-system-running` = `running`
   with `/etc/wsl.conf` alone.
 
-`docker-ce/install-docker-ce.ps1` resolves `$global:ScriptFolder` from `$PSScriptRoot`, so the
-`daemon.json` copy works from a git clone as well as from a `get-latestPackages.ps1` deploy. (It was
-previously hardcoded to `c:\config\workstation\docker-ce`.)
-
-## containers/
-
-`install-containerd-runtime.ps1` installs containerd + nerdctl + Windows CNI. **Windows Server only**
-(per `containers/readme.md`) — unrelated to and independent of the `docker-ce/` path.
+`Install-WindowsDocker` copies `daemon.json` from `$PSScriptRoot`, so it works from a git clone as
+well as from a `get-latestPackages.ps1` deploy, and it creates `%ProgramData%\docker\config\`
+itself: `dockerd` 20.10 created that directory on first run but 29.x does not, which is what broke
+the copy on the first real run (TODO G23). It appends `C:\docker` to the **machine** `Path` read
+from the machine scope — never `$env:Path`, which is Machine and User merged and would bake the
+running user's private directories into the machine `Path` (TODO G24). And it is idempotent piece by
+piece rather than gated on "is the service registered", because the service is created several steps
+before `daemon.json` and the `win` context, so one up-front check let a part-failed install look
+complete on retry (TODO G25).
 
 ## Distribution
 

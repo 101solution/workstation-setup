@@ -1,12 +1,15 @@
 # Repo Fix Backlog
 
-## Handover — start here (written 2026-09-13)
+## Handover — start here (updated 2026-09-14)
 
 **Where things stand.** `config-workstation.ps1` is unattended and resumable and has **passed a
-full clean run on the current code** (run 4, commit `d157cf0`, role `mrl`, one reboot, 13 min,
-end state verified on the machine). `docker-ce/config-docker.ps1` has been rewritten the same way
-but has **never run on a real machine**. Nothing has been released yet: users bootstrap from the
-latest GitHub release, so none of this reaches anyone until a `v2.x.y` tag is cut.
+full clean run** (run 4, commit `d157cf0`, role `mrl`, one reboot, 13 min, end state verified).
+`docker-ce/config-docker.ps1` has now **run on a real machine twice** (runs 5 and 5b): it found
+five bugs, G23-G27, all fixed. Both daemons have been proved individually on the VM —
+`docker -c win run hello-world` succeeded, and `docker run hello-world` succeeded once the WSL
+distro was started — but **the current code has not had a clean end-to-end pass**, because G26-G28
+changed the same path afterwards. Nothing has been released yet: users bootstrap from the latest
+GitHub release, so none of this reaches anyone until a `v2.x.y` tag is cut.
 
 **Next steps, in order.**
 1. Run the Docker CE flow on the test VM (G7 step 2). The VM is already a configured `mrl`
@@ -15,11 +18,11 @@ latest GitHub release, so none of this reaches anyone until a `v2.x.y` tag is cu
    `docker-ce\config-docker.ps1` as `azureadmin` via a scheduled task, poll, then verify
    `docker run hello-world` and `docker -c win run hello-world` as `azureadmin`. It will download
    Docker 29.8.0 for the first time (G14).
-2. Once that passes: fold `install-docker-ce.ps1` into the orchestrator (cleanup candidate 4; the
-   exit-code protocol only exists because it is a separate file).
-3. Ask the user, then act: keep or delete `containers/` (Windows Server only, unrelated) and the
-   `ce-corp` / `ce-free` roles (predate the current `docker-ce/` flow).
-4. Cut the release. Update README if the role table changed.
+2. ~~Fold `install-docker-ce.ps1` into the orchestrator~~ — **done 2026-09-14 (G28).**
+3. ~~Ask the user, then act: keep or delete `containers/` and the `ce-corp` / `ce-free` roles~~ —
+   **done 2026-09-14: all three deleted on request.**
+4. Re-run the Docker CE flow on the VM to confirm G26/G27/G28 (the merge touched the code path that
+   run 5b verified), then cut the release. Update README if the role table changed.
 
 **The test VM.** `vm-wstest-01`, resource group `S101-ARG-WSTEST-MRL`, subscription VS_Sub_MRL
 `1f513fde-7a26-4aae-a69e-3f29f41d7f2a` in the user's personal tenant `5509d93f-…`. If `az` says
@@ -499,6 +502,74 @@ Design is documented in the "Unattended execution and reboot resume" section of 
     ever returns true the phase exits 3010 on every run and the gate reboots forever. Now that
     `config-docker.ps1` owns the features via `Enable-ContainerFeature`, the whole `Install-Feature`
     function in the worker is redundant and should be deleted rather than fixed.
+  **Run 5b result (2026-09-14, retry on the same disk with G23-G25 fixed, code at `42ad75d`).
+  `docker-windows` passed and `done` was recorded — but the Linux daemon is unreachable from
+  Windows, so G7 step 2 is NOT passed.** Runs 3, reboots 1.
+  - *G23 verified:* `%ProgramData%\docker\config\daemon.json` is in place
+    (`hosts: tcp://127.0.0.1:2378, npipe://`), the service is Running, port **2378 is open**, and
+    **`docker -c win run hello-world` printed "Hello from Docker!"** (windows-amd64,
+    nanoserver-ltsc2025). The Windows half of the feature works end to end for the first time.
+  - *G25 verified:* the retry succeeded on a disk where the `docker` service was **already
+    registered** from the failed attempt — the exact path that previously short-circuited to
+    "Docker is already installed" and would have recorded a false success.
+  - *G24 not exercised,* as predicted: `C:\docker` was already on that disk's machine Path, so the
+    fixed write was skipped. Accepted on code review (user's call, 2026-09-14).
+  - [x] **G26. Bare `docker` fails whenever the WSL distro is not running.** *(fixed, unverified)* The daemon and the
+    plumbing are both correct — `ss -ltn` shows `LISTEN 127.0.0.1:2375`, systemd `running`, the
+    `docker` unit `active`, `dockerd -H fd:// -H tcp://127.0.0.1:2375`, `azureadmin` in the `docker`
+    group, and with the distro up Windows sees `127.0.0.1:2375 LISTENING` and connects fine.
+    **The binding is not the problem** — an earlier reading of this finding blamed the
+    `127.0.0.1` bind and proposed `0.0.0.0`; that was wrong, do not do it.
+    The actual cause is lifecycle. `install-docker-ce.sh` ends with `sudo shutdown -r now`, and WSL2
+    also stops an idle distro on its own. The relayed Windows port only exists while the distro is
+    running, and **a Windows-side TCP connect to that port does not start the distro.** Evidence
+    from the run-5b verify transcript: the script's header is stamped `02:10:33.52`, the Linux
+    `docker run` failed immediately after with `connectex: ... actively refused it`, and `vmmem`
+    started at `02:10:34` — the VM only came up when the script's *later* `wsl -- bash -lc` calls
+    ran. A 02:23 probe that happened to run `wsl -- hostname -I` first then connected fine.
+    So after any reboot, or after an idle timeout, `docker ps` fails until something has started
+    the distro. Fix candidates: an at-logon `wsl -d Ubuntu -- /bin/true` (the repo already has task
+    registration), or documenting the requirement. Do not change the bind address.
+  - [x] **G27. The `docker-linux` readiness check cannot fail, so it gave a false pass.** *(fixed, unverified)* It runs
+    `wsl --distribution Ubuntu -- docker version`, which is wrong twice over:
+    1. it talks to the **unix socket inside the distro**, not the TCP endpoint the Windows client
+       uses, so it says nothing about whether `DOCKER_HOST` works; and
+    2. invoking `wsl` **starts the distro**, which is the very condition whose absence is the
+       failure mode in G26 — the check creates the state it is supposed to be verifying.
+    That is why the run logged "Linux Docker daemon is up", recorded `docker-linux` complete, and
+    recorded `done` on an install where bare `docker` did not work. The check must ensure the distro
+    is up and then verify from **Windows** with a TCP connect to `127.0.0.1:2375`, failing the phase
+    if it does not answer. A check that cannot fail is not a check.
+  - *Fixes for G26/G27, committed 2026-09-14:* a new `wsl-autostart` phase registers an at-logon
+    task running `wsl -d <distro> -- /bin/true` (not `RunLevel Highest` — starting the distro needs
+    no elevation and this fires at every logon), and `docker-linux` now verifies the endpoint the
+    client actually uses via `Start-WslDistro`/`Test-TcpPort`: it brings the distro up, then TCP
+    connects to `127.0.0.1:2375` **from Windows** and throws if it never answers. `Test-TcpPort`
+    uses a raw `TcpClient` rather than `Test-NetConnection`, which warns on failure and is slower.
+    The lifecycle experiment that proved all of this is worth keeping: terminate the distro =>
+    `netstat` shows nothing on 2375 and bare `docker version` exits 1; `wsl -d Ubuntu -- /bin/true`
+    => 2375 LISTENING within ~15 s and `docker run hello-world` exits 0.
+
+- [x] **G28. `install-docker-ce.ps1` folded into `config-docker.ps1`** (2026-09-14, on request).
+  Once feature enabling moved to the `containers-feature` phase, the worker's only reason to be a
+  separate process — `exit 3010` to request a reboot — was unreachable: all three
+  `$global:RebootRequired = $true` assignments lived in its own `Install-Feature`, which was itself
+  redundant. **So the orchestrator's second `Invoke-RebootGate` was dead code and is gone too.**
+  That also retires the latent bug recorded under run 5: `Install-Feature` asked for the
+  ServerManager name `Hyper-V` where the client DISM name is `Microsoft-Hyper-V`, fell into its
+  `else` branch, and deferred to `(Get-WindowsEdition -Online).RestartNeeded` — which, had it ever
+  returned true, would have exited 3010 on every run and rebooted forever. Deleted rather than
+  fixed, since `Enable-ContainerFeature` in `helper.ps1` already gets the names right.
+  The Windows install is now `Install-WindowsDocker` plus `Test-DockerService` / `Test-TcpPort` in
+  `config-docker.ps1`; phases are `containers-feature`, `environment`, gate, `docker-windows`,
+  `docker-linux`, `wsl-autostart`.
+
+- [x] **G29. `containers/`, `ce-corp` and `ce-free` removed** (2026-09-14, on request).
+  `containers/install-containerd-runtime.ps1` was a Windows-Server-only containerd + nerdctl + CNI
+  path unrelated to `docker-ce/`; `packages-ce-corp.json` and `packages-ce-free.json` only installed
+  Visual Studio Professional / Community and predate the current flow. README, CLAUDE.md and the
+  role table updated. Recoverable from git history.
+
   - *Test-VM state, left as the run ended:* the machine `Path` **still carries** the five leaked
     `azureadmin` entries (not yet cleaned), and the `C:\docker` binaries, the registered-but-stopped
     `docker` service and the 12 `dockerd` data directories are all present. Note that because

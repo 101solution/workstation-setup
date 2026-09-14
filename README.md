@@ -28,8 +28,6 @@ afterwards.
 | `mrl` | Lighter setup — Terraform, .NET SDK 8, Azure CLI, Bruno, AWS CLI, PowerToys, Storage Explorer, AZCopy |
 | `cloudEngineer` | Cloud engineering — kubectl, minikube, Terraform, .NET SDK 8, Azure CLI, GitHub CLI, Bruno, AWS CLI, NodeJS LTS; AWSPowerShell.NetCore module |
 | `developer` | .NET SDK 8, Azure CLI, Bruno, Terraform |
-| `ce-corp` | Docker CE setup with Visual Studio Enterprise |
-| `ce-free` | Docker CE setup with Visual Studio Community |
 | `min` | The base packages only, nothing role-specific |
 
 Every role layers on the base packages from `packages-min.json`: PowerShell, Git, VS Code,
@@ -95,8 +93,13 @@ powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
 
 It installs a Windows Docker daemon and a Linux one inside WSL2 side by side, with the same
 unattended phase/resume behaviour and the same `-resumeMethod`, `-noReboot` and `-force` switches.
-Details in [docker-ce/README.md](docker-ce/README.md). Unlike the workstation setup, this flow has
-not yet been validated on a fresh machine.
+Details in [docker-ce/README.md](docker-ce/README.md).
+
+Note that bare `docker` needs the WSL distro running; the install registers an at-logon task that
+starts it. If `docker` ever fails right after a reboot, run `wsl -d Ubuntu -- /bin/true` and retry.
+
+Unlike the workstation setup, this flow has not yet had a clean end-to-end pass on a fresh machine
+— the first real run found four bugs, now fixed (see `TODO.md` G23-G27).
 
 ## Terminal
 

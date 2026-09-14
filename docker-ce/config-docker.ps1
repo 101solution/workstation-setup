@@ -4,7 +4,7 @@
     `docker -c win`) and a Linux daemon inside WSL2 Ubuntu on tcp://127.0.0.1:2375 (bare `docker`),
     running side by side.
 
-    Orchestrates ./install-docker-ce.ps1 (Windows) and ./install-docker-ce.sh (Ubuntu) with the same
+    Installs the Windows daemon itself and drives ./install-docker-ce.sh for Ubuntu, with the same
     phase/resume machinery as config-workstation.ps1 (see helper.ps1). The Containers feature, plus
     Hyper-V on client SKUs, is enabled first with -NoRestart; then there is a single reboot gate; then
     both daemons are installed on the far side of it. Progress is recorded in
@@ -13,6 +13,13 @@
 
     Prerequisite: WSL2 with an Ubuntu distro whose default user has passwordless sudo, which is what
     config-workstation.ps1 provisions. Can be run from any directory.
+
+    WHY BARE `docker` NEEDS A LOGON TASK
+    The Linux daemon is reachable from Windows only while the WSL distro runs: the relayed
+    127.0.0.1:2375 port exists only then, and a Windows-side TCP connect does NOT start the distro.
+    install-docker-ce.sh restarts WSL, and WSL2 stops idle distros anyway, so `docker ps` would fail
+    after every reboot. The wsl-autostart phase registers an at-logon task running
+    `wsl -d <distro> -- /bin/true`, which is enough to bring it up.
 
     .EXAMPLE
         .\config-docker.ps1
@@ -29,6 +36,12 @@ param (
     [Parameter()]
     [string]
     $distroName = "Ubuntu",
+    [Parameter()]
+    [string]
+    $dockerVersion = "29.8.0",
+    [Parameter(HelpMessage = "Name of the at-logon task that starts the WSL distro.")]
+    [string]
+    $autostartTaskName = "docker-ce-wsl-autostart",
     [Parameter(HelpMessage = "How setup comes back after a reboot: ScheduledTask, RunOnce or None.")]
     [ValidateSet('ScheduledTask', 'RunOnce', 'None')]
     [string]
@@ -59,8 +72,11 @@ $finishLog = {
 Write-SetupLog "Helper loaded from $repoRoot\helper.ps1"
 $script:SetupStateFileName = 'docker-ce-state.json'
 
-# install-docker-ce.ps1 and install-docker-ce.sh use paths relative to the current directory.
+# install-docker-ce.sh is invoked with a path relative to the current directory.
 Set-Location $PSScriptRoot
+
+$script:DockerServiceName = 'docker'
+$script:DockerDataPath = Join-Path $env:ProgramData 'docker'
 
 # Rebuild the exact invocation to replay after a reboot, before anything can mutate $PSBoundParameters.
 $resumeCommand = Get-ResumeCommand -ScriptPath (Join-Path $PSScriptRoot 'config-docker.ps1') `
@@ -79,6 +95,140 @@ Write-SetupLog ""
 Write-SetupLog "=== Docker CE setup: run #$($state.runCount), $($state.rebootCount) reboot(s) so far ==="
 if (@($state.completedPhases).Count -gt 0) {
     Write-SetupLog "Resuming. Already complete: $((@($state.completedPhases) -join ', '))"
+}
+
+# ---------------------------------------------------------------------------------------------
+# Windows daemon. Folded in from the former install-docker-ce.ps1 worker: once the feature enabling
+# moved to the containers-feature phase, the worker's only reason to be a separate process - exiting
+# 3010 to ask for a reboot - became unreachable, and with it the second reboot gate this script used
+# to run. Failures now simply throw and Invoke-SetupPhase retries the phase on the next run.
+# ---------------------------------------------------------------------------------------------
+
+Function Test-DockerService {
+    # Return value is tested, so this must log nothing to the success stream.
+    return ($null -ne (Get-Service -Name $script:DockerServiceName -ErrorAction SilentlyContinue))
+}
+
+Function Test-TcpPort {
+    <#
+        .SYNOPSIS
+            True when something accepts a TCP connection on the port. Return value is tested.
+        .DESCRIPTION
+            Used instead of Test-NetConnection, which emits a warning on failure and is slower.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter()] [string] $ComputerName = '127.0.0.1',
+        [Parameter(Mandatory)] [int] $Port,
+        [Parameter()] [int] $TimeoutMs = 2000
+    )
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $async = $client.BeginConnect($ComputerName, $Port, $null, $null)
+        if (-not $async.AsyncWaitHandle.WaitOne($TimeoutMs)) { return $false }
+        $client.EndConnect($async)
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $client.Close()
+    }
+}
+
+Function Install-WindowsDocker {
+    <#
+        .SYNOPSIS
+            Installs, configures and starts the Windows daemon on tcp://127.0.0.1:2378.
+        .DESCRIPTION
+            Idempotent piece by piece rather than gated on "is the service registered": the service
+            is registered several steps before daemon.json and the 'win' context exist, so one
+            up-front check made a part-failed install look complete on the retry (G25).
+    #>
+    if (-not (Test-Path -LiteralPath 'C:\docker\dockerd.exe')) {
+        $zipPath = Join-Path $env:TEMP "docker-$dockerVersion.zip"
+        Write-SetupLog "  Downloading Docker Engine $dockerVersion ..."
+        curl.exe -o $zipPath -L "https://download.docker.com/win/static/stable/x86_64/docker-$dockerVersion.zip"
+        if (-not (Test-Path -LiteralPath $zipPath)) {
+            throw "Docker Engine download failed; $zipPath was not created."
+        }
+        Expand-Archive -LiteralPath $zipPath -DestinationPath C:\ -Force
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    }
+    else {
+        Write-SetupLog "  C:\docker\dockerd.exe is already present."
+    }
+
+    # Append to the MACHINE Path, never to $env:Path: the process value is Machine and User merged,
+    # so writing it back bakes the running user's private directories (WindowsApps, WinGet\Links,
+    # .dotnet\tools, ...) into the machine Path for every other user on the box. Verified on the
+    # test VM, which collected five of azureadmin's directories that way (G24).
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', [System.EnvironmentVariableTarget]::Machine)
+    if (($machinePath -split ';') -notcontains 'C:\docker') {
+        [Environment]::SetEnvironmentVariable('Path', "$($machinePath.TrimEnd(';'));C:\docker", [System.EnvironmentVariableTarget]::Machine)
+    }
+    if (($env:Path -split ';') -notcontains 'C:\docker') { $env:Path = "$env:Path;C:\docker" }
+    [Environment]::SetEnvironmentVariable('DOCKER_HOST', 'tcp://127.0.0.1:2378', [System.EnvironmentVariableTarget]::Machine)
+
+    if (-not (Test-DockerService)) {
+        Write-SetupLog "  Registering the docker service ..."
+        dockerd --register-service --service-name $script:DockerServiceName
+    }
+
+    # dockerd creates its data directories on first run but NOT config\. Docker 20.10 did, which is
+    # the only reason starting and stopping the service here used to produce it; 29.x does not, so
+    # daemon.json needs a directory to land in or the copy fails with "The directory name is
+    # invalid" and the daemon never gets its TCP endpoint (G23).
+    $configDir = Join-Path $script:DockerDataPath 'config'
+    if (-not (Test-Path -LiteralPath $configDir)) {
+        New-Item -Path $configDir -ItemType Directory -Force | Out-Null
+    }
+    Copy-Item "$PSScriptRoot\daemon.json" $configDir -Force
+
+    # daemon.json has to be in place before the daemon reads it, so restart if it is already up.
+    if ((Get-Service -Name $script:DockerServiceName).Status -eq 'Running') {
+        Restart-Service -Name $script:DockerServiceName
+    }
+    else {
+        Start-Service -Name $script:DockerServiceName
+    }
+
+    if ((docker context ls --format '{{.Name}}' 2>$null) -notcontains 'win') {
+        docker context create win --docker host=tcp://127.0.0.1:2378
+    }
+
+    Write-SetupLog "  Waiting for the Windows daemon on tcp://127.0.0.1:2378 ..."
+    $deadline = (Get-Date).AddMinutes(2)
+    while (-not (Test-TcpPort -Port 2378) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+    }
+    if (-not (Test-TcpPort -Port 2378)) {
+        throw "The Windows Docker daemon did not start listening on tcp://127.0.0.1:2378."
+    }
+    Write-SetupLog "  Windows Docker daemon is up."
+}
+
+Function Start-WslDistro {
+    <#
+        .SYNOPSIS
+            Brings the distro up with a no-op and waits for the Linux daemon's port to answer.
+        .OUTPUTS
+            [bool] $true when 127.0.0.1:2375 answers from Windows. Return value is tested.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $DistroName,
+        [Parameter()] [int] $TimeoutSeconds = 90
+    )
+    Write-SetupLog "  Starting WSL distro '$DistroName' ..."
+    & wsl.exe --distribution $DistroName -- /bin/true 2>&1 | Out-Null
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-TcpPort -Port 2375) { return $true }
+        Start-Sleep -Seconds 3
+    }
+    return (Test-TcpPort -Port 2375)
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -110,25 +260,10 @@ Invoke-SetupPhase -Phase 'environment' -Body {
 Invoke-RebootGate -State $state -TaskName $taskName -ResumeCommand $resumeCommand -ResumeMethod $resumeMethod `
     -WorkingDirectory $PSScriptRoot -NoReboot:$noReboot -BeforeExit $finishLog
 
-# ---------------------------------------------------------------------------------------------
-# Phase: the Windows daemon. install-docker-ce.ps1 exits 3010 if a feature still needs a restart
-# (e.g. Windows had one pending that the feature phase could not see), so the gate runs once more.
-# ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'docker-windows' -Body {
     Write-SetupLog "Configuring Docker on Windows (host) ..."
-    & "$PSScriptRoot\install-docker-ce.ps1"
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -eq 3010) {
-        Request-PhaseReboot -Reason 'install-docker-ce.ps1 reports a Windows feature still needs a restart'
-        return
-    }
-    if ($exitCode -ne 0) {
-        throw "install-docker-ce.ps1 exited with $exitCode"
-    }
+    Install-WindowsDocker
 }
-
-Invoke-RebootGate -State $state -TaskName $taskName -ResumeCommand $resumeCommand -ResumeMethod $resumeMethod `
-    -WorkingDirectory $PSScriptRoot -NoReboot:$noReboot -BeforeExit $finishLog
 
 # ---------------------------------------------------------------------------------------------
 # Phase: the Linux daemon inside WSL2.
@@ -143,20 +278,40 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
 
     Write-SetupLog "Configuring Docker on Linux (WSL2 $distroName) ..."
     # install-docker-ce.sh ends with `sudo shutdown -r now`, which tears down this wsl.exe session,
-    # so its exit code is not meaningful. Verify by talking to the daemon on a fresh instance instead.
+    # so its exit code is not meaningful.
     & wsl.exe --distribution $distroName -- bash ./install-docker-ce.sh
 
-    Write-SetupLog "Waiting for the Linux daemon to come back on the patched unit file ..."
-    $ready = $false
-    for ($attempt = 1; $attempt -le 12 -and -not $ready; $attempt++) {
-        Start-Sleep -Seconds 5
-        & wsl.exe --distribution $distroName -- docker version 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $ready = $true }
+    # Verify what the client will actually use: a TCP connect to 2375 from WINDOWS. The old check
+    # ran `wsl -- docker version`, which talks to the unix socket inside the distro and - worse -
+    # starts the distro, so it could not fail and reported success on an install where bare
+    # `docker` did not work (G27).
+    Write-SetupLog "Waiting for the Linux daemon on tcp://127.0.0.1:2375 (from Windows) ..."
+    if (-not (Start-WslDistro -DistroName $distroName)) {
+        throw "The Linux Docker daemon is not reachable on tcp://127.0.0.1:2375 from Windows. Check 'wsl -d $distroName -- systemctl status docker' and that /etc/systemd/system/docker.service carries -H tcp://127.0.0.1:2375."
     }
-    if (-not $ready) {
-        throw "The Linux Docker daemon in $distroName did not answer after install; check 'wsl -d $distroName -- systemctl status docker'."
-    }
-    Write-SetupLog "Linux Docker daemon is up."
+    Write-SetupLog "Linux Docker daemon is reachable from Windows."
+}
+
+# ---------------------------------------------------------------------------------------------
+# Phase: keep bare `docker` working across reboots. The relayed 127.0.0.1:2375 port exists only
+# while the distro runs, and a Windows-side TCP connect does not start it - so without this, every
+# reboot leaves `docker ps` failing until something touches WSL. Measured on the test VM: distro
+# stopped => nothing listening and bare `docker` exits 1; after the no-op below, 2375 answers within
+# ~15 s and `docker run hello-world` succeeds (G26).
+# ---------------------------------------------------------------------------------------------
+Invoke-SetupPhase -Phase 'wsl-autostart' -Body {
+    $runAsUser = "$($env:USERDOMAIN)\$($env:USERNAME)"
+    Write-SetupLog "Registering at-logon task '$autostartTaskName' to start WSL for $runAsUser ..."
+    $action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument "--distribution $distroName -- /bin/true"
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $runAsUser
+    # Deliberately not RunLevel Highest: starting the distro needs no elevation and this fires at
+    # every logon, so it should hold the least privilege that works.
+    $principal = New-ScheduledTaskPrincipal -UserId $runAsUser -LogonType Interactive
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit ([TimeSpan]::FromMinutes(5))
+    Register-ScheduledTask -TaskName $autostartTaskName -Action $action -Trigger $trigger `
+        -Principal $principal -Settings $settings `
+        -Description 'Starts the WSL2 distro so the Linux Docker daemon is reachable on 127.0.0.1:2375' -Force | Out-Null
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -167,6 +322,8 @@ if ($SetupExitCode -eq 0) {
     Write-SetupLog "  Verify in a NEW shell (so DOCKER_HOST is picked up):"
     Write-SetupLog "    docker run hello-world          # Linux daemon, tcp://127.0.0.1:2375"
     Write-SetupLog "    docker -c win run hello-world   # Windows daemon, tcp://127.0.0.1:2378"
+    Write-SetupLog "  If bare docker ever fails after a reboot, the distro is not running yet:"
+    Write-SetupLog "    wsl -d $distroName -- /bin/true"
 }
 
 & $finishLog

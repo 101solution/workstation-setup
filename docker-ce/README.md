@@ -7,9 +7,10 @@ Two daemons end up running side by side:
 - **Windows** on `tcp://127.0.0.1:2378` (and `npipe://`). A `win` context is created for it, so
   `docker -c win ...` targets Windows containers.
 
-> **Status:** rewritten as a phase-based, resumable orchestrator in September 2026 but **not yet run
-> end to end on a real machine**. The workstation setup it depends on has been. Treat the steps
-> below as the design until `TODO.md` (G7 step 2) records a passing run.
+> **Status (2026-09-14):** first run on a real machine found and fixed four bugs (`TODO.md`
+> G23-G27). Both daemons have been verified individually on the test VM — `docker -c win run
+> hello-world` and, once the distro was up, `docker run hello-world` — but the current merged code
+> has not yet had a clean end-to-end pass. See `TODO.md` G7 step 2.
 
 ## Prerequisite
 
@@ -31,10 +32,13 @@ The script is unattended and resumable, using the same phase machinery as `confi
 1. `containers-feature` — enables the Containers feature (plus Hyper-V on Windows 10/11) without restarting.
 2. `environment` — user-scope `DOCKER_HOST`, `WSLENV` and `BASH_ENV`.
 3. **Reboot gate** — restarts once, only if step 1 needed it, and resumes via a logon task.
-4. `docker-windows` — runs `install-docker-ce.ps1`: Docker static binaries to `C:\docker`, the
-   `docker` service, `daemon.json`, the `win` context.
+4. `docker-windows` — Docker static binaries to `C:\docker`, the `docker` service, `daemon.json`,
+   the `win` context. Waits for 2378 to answer.
 5. `docker-linux` — runs `install-docker-ce.sh` inside Ubuntu: Docker CE from the official apt repo,
-   the unit file patched to also listen on 2375, then a WSL restart. Waits for the daemon to answer.
+   the unit file patched to also listen on 2375, then a WSL restart. Then verifies from **Windows**
+   that `127.0.0.1:2375` answers, which is what the client actually uses.
+6. `wsl-autostart` — registers an at-logon task running `wsl -d Ubuntu -- /bin/true`. See the note
+   below; without it bare `docker` breaks after every reboot.
 
 `-resumeMethod ScheduledTask|RunOnce|None`, `-noReboot` (exit 3010 instead of restarting) and `-force`
 (redo everything) work exactly as in the workstation script. Logs go to `logs\docker-ce-config-<date>.log`
@@ -51,8 +55,15 @@ docker -c win run hello-world   # Windows daemon
 
 ## Notes
 
-- `install-docker-ce.ps1` is a worker driven by the orchestrator. Exit code 0 is success, 3010 means
-  a Windows feature still needs a restart, 1 is failure. Running it on its own never restarts the
-  machine.
+- **Bare `docker` needs the WSL distro running.** The relayed `127.0.0.1:2375` port exists only
+  while the distro is up, and a Windows-side TCP connect does not start it. `install-docker-ce.sh`
+  restarts WSL, and WSL2 stops idle distros anyway, so the `wsl-autostart` logon task exists to
+  bring it up. If bare `docker` ever fails, start the distro and retry:
+  ```powershell
+  wsl -d Ubuntu -- /bin/true
+  docker run hello-world
+  ```
+- The old `install-docker-ce.ps1` worker and its 0/3010/1 exit-code protocol were folded into
+  `config-docker.ps1` on 2026-09-14; the Windows install is now the `docker-windows` phase.
 - systemd inside the distro is required (the Linux installer uses `systemctl`). The workstation
   setup enables it through `/etc/wsl.conf`; nothing extra is needed on a current WSL build.
