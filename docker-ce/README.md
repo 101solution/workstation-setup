@@ -35,9 +35,11 @@ The script is unattended and resumable, using the same phase machinery as `confi
 4. `docker-windows` — Docker static binaries to `C:\docker`, the `docker` service, `daemon.json`,
    the `win` context. Waits for 2378 to answer.
 5. `docker-linux` — runs `install-docker-ce.sh` inside Ubuntu: Docker CE from the official apt repo,
-   the unit file patched to also listen on 2375, then a WSL restart. Then verifies from **Windows**
-   that `127.0.0.1:2375` answers, which is what the client actually uses.
-6. `wsl-autostart` — registers an at-logon task running `wsl -d Ubuntu -- /bin/true`. See the note
+   the unit file patched to also listen on 2375, then `systemctl restart docker`. Then verifies from
+   **Windows** that `127.0.0.1:2375` answers, which is what the client actually uses. The whole
+   script runs under a 30-minute bounded wait, so it can never wedge the install.
+6. `wsl-autostart` — registers an at-logon task that **holds a WSL session open**
+   (`conhost --headless wsl.exe --distribution Ubuntu -- sleep infinity`). See the note
    below; without it bare `docker` breaks after every reboot.
 
 `-resumeMethod ScheduledTask|RunOnce|None`, `-noReboot` (exit 3010 instead of restarting) and `-force`
@@ -56,9 +58,9 @@ docker -c win run hello-world   # Windows daemon
 ## Notes
 
 - **Bare `docker` needs the WSL distro running.** The relayed `127.0.0.1:2375` port exists only
-  while the distro is up, and a Windows-side TCP connect does not start it. `install-docker-ce.sh`
-  restarts WSL, and WSL2 stops idle distros anyway, so the `wsl-autostart` logon task exists to
-  bring it up. If bare `docker` ever fails, start the distro and retry:
+  while the distro is up, and a Windows-side TCP connect does not start it. WSL2 shuts an idle
+  distro down about a minute after the last session closes, so the `wsl-autostart` logon task does
+  not merely start it - it holds a session open. If bare `docker` ever fails, start it and retry:
   ```powershell
   wsl -d Ubuntu -- /bin/true
   docker run hello-world

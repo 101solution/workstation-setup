@@ -54,6 +54,7 @@ powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role <rol
 | `-resumeMethod` | `ScheduledTask` | How setup comes back after the reboot: `ScheduledTask`, `RunOnce` or `None`. See below |
 | `-noReboot` | off | Never restart. Exit code 3010 means a restart is owed; for image pipelines that sequence their own reboots |
 | `-force` | off | Discard saved progress and redo every phase |
+| `-taskName` | `workstation-config-resume` | Name of the resume task / `RunOnce` entry |
 
 ## Unattended execution and reboots
 
@@ -95,8 +96,14 @@ It installs a Windows Docker daemon and a Linux one inside WSL2 side by side, wi
 unattended phase/resume behaviour and the same `-resumeMethod`, `-noReboot` and `-force` switches.
 Details in [docker-ce/README.md](docker-ce/README.md).
 
-Note that bare `docker` needs the WSL distro running; the install registers an at-logon task that
-starts it. If `docker` ever fails right after a reboot, run `wsl -d Ubuntu -- /bin/true` and retry.
+Note that bare `docker` needs the WSL distro running, and WSL2 shuts an idle distro down after
+about a minute. The install registers an at-logon task that holds a session open for you. If bare
+`docker` ever does fail, start the distro and retry:
+
+```powershell
+wsl -d Ubuntu -- /bin/true
+docker run hello-world
+```
 
 Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `TODO.md`): the Windows
 daemon answers on 2378, and the WSL2 Linux daemon reports `os=linux` on 2375 and runs containers.

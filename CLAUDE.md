@@ -51,8 +51,8 @@ the caller's: `Invoke-SetupPhase`, `Request-PhaseReboot` and `Invoke-RebootGate`
 **Phase order is load-bearing.** In `config-workstation.ps1`, `wsl-features` runs first and with
 `-NoRestart`, then all the slow work (`winget`, `fonts`, `psmodules`, `shell`, `terminal`), then a
 single reboot gate, then `wsl-distro`. The Docker CE orchestrator has `containers-feature` and
-`environment` before the gate, `docker-windows` and `docker-linux` after it (dockerd cannot start
-until the Containers feature is live). The point is that **at most one reboot ever happens**
+`environment` before the gate, then `docker-windows`, `docker-linux` and `wsl-autostart` after it
+(dockerd cannot start until the Containers feature is live). The point is that **at most one reboot ever happens**
 and only what genuinely needs the restart is left on the far side of it. Don't reorder phases so that
 something slow lands after the gate.
 
@@ -202,12 +202,18 @@ design:
   `docker run hello-world` and `docker -c win run hello-world`.
 - `WSLENV`/`BASH_ENV` are set so the Windows-side `DOCKER_HOST` propagates into WSL.
 - **Bare `docker` only works while the WSL distro is running.** The relayed `127.0.0.1:2375` port
-  exists only then, and a Windows-side TCP connect does **not** start the distro. Since
-  `install-docker-ce.sh` ends in `sudo shutdown -r now` and WSL2 stops idle distros anyway, every
-  reboot would otherwise leave `docker ps` failing. The `wsl-autostart` phase registers an at-logon
-  task running `wsl -d Ubuntu -- /bin/true`. Measured on the test VM: distro stopped means nothing
-  listening and bare `docker` exits 1; after the no-op, 2375 answers within ~15 s.
-- `install-docker-ce.sh` ends in `sudo shutdown -r now`, so its exit code is meaningless. The
+  exists only then, and a Windows-side TCP connect does **not** start the distro. WSL2 also shuts an
+  idle distro down about a minute after the last session closes, so *starting* it once is not
+  enough - that was the first, wrong fix. The `wsl-autostart` phase therefore **holds a session
+  open** for the whole logon: an at-logon task running
+  `conhost --headless wsl.exe --distribution Ubuntu -- sleep infinity` (`ExecutionTimeLimit` PT0S,
+  since it never exits; `conhost --headless` so no console window is left on the desktop, verified
+  by `MainWindowHandle` being 0). Measured on the test VM: after `wsl --terminate`, nothing listens
+  and bare `docker` exits 1; with the keepalive up, the listener is present and still present after
+  a 150 s wait, well past the idle timeout.
+- `install-docker-ce.sh` ends with `systemctl restart docker`, not a WSL restart. It used to end in
+  `sudo shutdown -r now`, which was both redundant (`daemon-reload` already loads the patched unit)
+  and prone to hanging forever under systemd-in-WSL. The
   `docker-linux` phase verifies **what the client actually uses**: a TCP connect to
   `127.0.0.1:2375` from Windows, via `Start-WslDistro`/`Test-TcpPort`, throwing if it never answers.
   It must not go back to `wsl -- docker version`: that probes the unix socket *inside* the distro
