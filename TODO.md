@@ -2,14 +2,13 @@
 
 ## Handover — start here (updated 2026-09-14)
 
-**Where things stand.** `config-workstation.ps1` is unattended and resumable and has **passed a
-full clean run** (run 4, commit `d157cf0`, role `mrl`, one reboot, 13 min, end state verified).
-`docker-ce/config-docker.ps1` has now **run on a real machine twice** (runs 5 and 5b): it found
-five bugs, G23-G27, all fixed. Both daemons have been proved individually on the VM —
-`docker -c win run hello-world` succeeded, and `docker run hello-world` succeeded once the WSL
-distro was started — but **the current code has not had a clean end-to-end pass**, because G26-G28
-changed the same path afterwards. Nothing has been released yet: users bootstrap from the latest
-GitHub release, so none of this reaches anyone until a `v2.x.y` tag is cut.
+**Where things stand.** Both entry points have **passed a clean end-to-end run on a fresh machine**
+(run 7, 2026-09-14, from `snap-vm-wstest-01-clean-20260911`): `config-workstation.ps1 -role mrl`
+in 9 phases and one reboot, then `config-docker.ps1` in 6 phases and one reboot, with the Windows
+daemon printing the hello-world banner and the Linux daemon reporting `os=linux` on 2375 and running
+a container to `exitCode=0`. Getting there took **nine bugs that only a real machine exposed**
+(G23-G31); every one passed the parser, JSON and unit checks beforehand. **Ready to tag**; nothing
+reaches users until a `v2.x.y` release is cut, since they bootstrap from the latest release.
 
 **Next steps, in order.**
 1. Run the Docker CE flow on the test VM (G7 step 2). The VM is already a configured `mrl`
@@ -572,6 +571,43 @@ Design is documented in the "Unattended execution and reboot resume" section of 
     The lifecycle experiment that proved all of this is worth keeping: terminate the distro =>
     `netstat` shows nothing on 2375 and bare `docker version` exits 1; `wsl -d Ubuntu -- /bin/true`
     => 2375 LISTENING within ~15 s and `docker run hello-world` exits 0.
+
+  **RUN 7 (2026-09-14): the clean-snapshot end-to-end validation. PASSED.** Restored
+  `snap-vm-wstest-01-clean-20260911` (disk `vm-wstest-01-osdisk-202609140303`; the previous disk
+  was retained), reset `azureadmin` with `az vm user update`, armed autologon, and ran the real
+  user journey. The bootstrap asserted the clean slate first rather than trusting the disk swap:
+  docker service absent, no `C:\docker`, empty `%ProgramData%\workstation-setup`, no `C:\docker`
+  on the machine Path, **0** leaked `azureadmin` Path entries.
+
+  - `config-workstation.ps1 -role mrl`: **PASS**. 03:14 -> 03:29:57, 9 phases, 1 reboot, resume
+    task fired and removed itself. Re-confirms run 4 against current `main`.
+  - `config-docker.ps1` (no flags, as a user runs it): **PASS**. 6 phases, 1 reboot. The gate
+    genuinely fired - `environment` is recorded *before* `containers-feature` because the latter
+    deferred, which is the signature of a real deferral rather than a skip.
+  - **G23 verified:** `%ProgramData%\docker\config\daemon.json` present with
+    `{ hosts: [tcp://127.0.0.1:2378, npipe://] }`. The `New-Item` fix executed for the first time.
+  - **G24 verified twice:** leaked `C:\Users\*` entries in the machine Path = **0**, against 5
+    before the fix; re-checked at the end of all testing, still 0.
+  - **G30's bounded wait verified:** run 7b threw at 04:27:46, exactly 30:00 after the phase
+    started, left `docker-linux` un-recorded, withheld `done`, and reported *finished with 1
+    FAILED phase(s)*. That is what turned an indefinite wedge into a retryable failure.
+  - **G31 verified:** the retry that previously hung for 20 and 30 minutes completed in ~1 minute,
+    and the phase-retry contract held - only the un-recorded `docker-linux` ran, the rest skipped.
+  - **G26 verified after a real reboot, unassisted:** uptime 2:59, keepalive task
+    `state=Running lastRun=05:11:52`, and **1 Windows listener on 2375 measured before anything
+    touched WSL**. Measurement order was deliberate - every `wsl` call came last, because a probe
+    that starts the distro manufactures its own pass (the G27 mistake).
+  - **Linux daemon proven, not inferred:** `GET /version` -> `29.8.0 os=linux arch=amd64
+    api=1.56`, `/_ping` -> OK, and a container created and started through the API reached
+    `state=exited exitCode=0` with `Hello from Docker!` in its log.
+  - **Windows daemon:** `docker -c win run hello-world` printed the banner.
+
+  *Measurement artifact worth knowing:* native `docker` CLI **stdout comes back empty inside a
+  non-interactive scheduled task**, even through `cmd /c ... > file`. It cost two false alarms
+  here. `exit=0` alone is not evidence in that context - use the daemon's HTTP API. Proof the CLI
+  was working all along: `hello-world:latest` at 25,874 bytes (the *Linux* image; the Windows one
+  is ~482 MB) was present on the Linux daemon, pulled by exactly that 'silent' CLI run.
+  Also: `Invoke-WebRequest` needs `-UseBasicParsing` under Windows PowerShell 5.1.
 
 - [x] **G31. THE ACTUAL CAUSE of both `docker-linux` hangs: `gpg --dearmor -o` blocks on an
   overwrite prompt on every re-run** (found and fixed 2026-09-14, after G30 got it wrong).

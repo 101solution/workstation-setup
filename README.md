@@ -98,8 +98,8 @@ Details in [docker-ce/README.md](docker-ce/README.md).
 Note that bare `docker` needs the WSL distro running; the install registers an at-logon task that
 starts it. If `docker` ever fails right after a reboot, run `wsl -d Ubuntu -- /bin/true` and retry.
 
-Unlike the workstation setup, this flow has not yet had a clean end-to-end pass on a fresh machine
-— the first real run found four bugs, now fixed (see `TODO.md` G23-G27).
+Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `TODO.md`): the Windows
+daemon answers on 2378, and the WSL2 Linux daemon reports `os=linux` on 2375 and runs containers.
 
 ## Terminal
 

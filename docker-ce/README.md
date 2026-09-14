@@ -7,10 +7,10 @@ Two daemons end up running side by side:
 - **Windows** on `tcp://127.0.0.1:2378` (and `npipe://`). A `win` context is created for it, so
   `docker -c win ...` targets Windows containers.
 
-> **Status (2026-09-14):** first run on a real machine found and fixed four bugs (`TODO.md`
-> G23-G27). Both daemons have been verified individually on the test VM — `docker -c win run
-> hello-world` and, once the distro was up, `docker run hello-world` — but the current merged code
-> has not yet had a clean end-to-end pass. See `TODO.md` G7 step 2.
+> **Status (2026-09-14): validated end to end on a clean machine** (run 7 in `TODO.md`). Getting
+> there took nine real-machine bugs, G23-G31. Both daemons verified: `docker -c win run hello-world`
+> prints its banner, and the Linux daemon reports `os=linux arch=amd64` on 2375 and runs a container
+> to `exitCode=0`. Bare `docker` survives a reboot via the `wsl-autostart` keepalive.
 
 ## Prerequisite
 
