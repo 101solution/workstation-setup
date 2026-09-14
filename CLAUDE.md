@@ -9,11 +9,16 @@ role-based JSON package manifests installed via WinGet and PSGallery.
 
 There is no build, lint, or test. Every change is validated by running the script as Administrator
 on a real (preferably throwaway) Windows machine and reading the transcript log. `TODO.md` is the
-record of what has and has not been validated that way. As of 2026-09-13, `config-workstation.ps1`
-(role `mrl`, default `ScheduledTask` resume) has passed end to end on an Azure Windows 11 Enterprise
-24H2 VM with the end state verified; `docker-ce/config-docker.ps1` has **not** yet been run on a
-real machine. The throwaway VM, its clean snapshot and the `az vm run-command` driver scripts are
-described under G7 in `TODO.md`. Cheap local checks that are worth running before any push: parse
+record of what has and has not been validated that way. As of **2026-09-14 (run 7, released as
+v2.4.0)** both entry points have passed end to end from a clean Azure Windows 11 Enterprise 24H2
+snapshot: `config-workstation.ps1 -role mrl` in 9 phases and one reboot, then
+`docker-ce/config-docker.ps1` in 6 phases and one reboot, with both daemons verified. The throwaway
+VM, its clean snapshot and the `az vm run-command` driver scripts are described under G7 in
+`TODO.md`. **Treat that history as the main lesson of this repo: nine bugs (G23-G31) were found only
+by running it on a real machine, and every one of them had already passed the parser, JSON and unit
+checks.** Two of the worst were not install logic at all - one let a part-failed install record
+success on retry, and one was a readiness check that started the very distro it was checking, so it
+could never fail. Static checks here tell you a change is syntactically sound, nothing more. Cheap local checks that are worth running before any push: parse
 every `.ps1` with `[System.Management.Automation.Language.Parser]::ParseFile`, `bash -n` the shell
 scripts, and `ConvertFrom-Json` every manifest.
 
@@ -245,8 +250,21 @@ Users bootstrap from the **latest GitHub release**, not from `main`:
 Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1" -OutFile "$env:temp\get-latestPackages.ps1"; powershell.exe -executionpolicy bypass -file $env:temp\get-latestPackages.ps1 -role mrldev
 ```
 
-So a manifest or script change reaches nobody until a new release tag (`v2.x.y`) is cut.
+So a manifest or script change reaches nobody until a new `v2.x.y` release is published.
 `get-latestPackages.ps1` is the one exception — it's fetched from raw `main`, so edits to it take
 effect immediately.
+
+**A git tag is not a release.** `get-latestPackages.ps1` queries the `/releases` API and takes the
+first non-draft, non-prerelease entry, so `git push origin v2.x.y` on its own reaches nobody. Cut
+the tag *and* publish a GitHub Release from it:
+
+```powershell
+git tag -a v2.x.y -m "..."; git push origin v2.x.y
+gh release create v2.x.y --verify-tag --title "..." --notes-file notes.md
+```
+
+Publishing is the step with real blast radius: the new release immediately becomes what every
+machine running the bootstrap one-liner installs. `gh release delete v2.x.y` reverts to the previous
+one if needed. Current release: **v2.4.0** (2026-09-14).
 
 The README's role table is hand-maintained; update it when adding a role or materially changing a manifest.

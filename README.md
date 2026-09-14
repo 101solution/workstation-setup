@@ -16,9 +16,9 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
-Last validated end to end on 2026-09-13: a fresh Windows 11 Enterprise 24H2 VM, role `mrl`, one
-reboot, 13 minutes, with WSL Ubuntu, the shell profile, Windows Terminal and every package verified
-afterwards.
+Last validated end to end on 2026-09-14 (`v2.4.0`): a fresh Windows 11 Enterprise 24H2 VM, role
+`mrl` — 9 phases, one reboot, ~15 minutes — with WSL Ubuntu, the shell profile, Windows Terminal and
+every package verified afterwards, followed by the Docker CE flow and both daemons.
 
 ## Available Roles
 

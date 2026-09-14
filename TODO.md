@@ -7,16 +7,18 @@
 in 9 phases and one reboot, then `config-docker.ps1` in 6 phases and one reboot, with the Windows
 daemon printing the hello-world banner and the Linux daemon reporting `os=linux` on 2375 and running
 a container to `exitCode=0`. Getting there took **nine bugs that only a real machine exposed**
-(G23-G31); every one passed the parser, JSON and unit checks beforehand. **Ready to tag**; nothing
-reaches users until a `v2.x.y` release is cut, since they bootstrap from the latest release.
+(G23-G31); every one passed the parser, JSON and unit checks beforehand.
 
-**Next steps, in order.**
-1. Run the Docker CE flow on the test VM (G7 step 2). The VM is already a configured `mrl`
-   workstation with WSL Ubuntu 26.04, which is exactly its precondition. Drive it the same way as
-   the workstation runs (below): refresh `main` onto the VM, start
-   `docker-ce\config-docker.ps1` as `azureadmin` via a scheduled task, poll, then verify
-   `docker run hello-world` and `docker -c win run hello-world` as `azureadmin`. It will download
-   Docker 29.8.0 for the first time (G14).
+**Released as `v2.4.0` on 2026-09-14** (commit `f977c29`), published as a GitHub *Release*, not just
+a tag - `get-latestPackages.ps1` queries `/releases` and filters non-draft/non-prerelease, so a bare
+tag would reach nobody. It is now "Latest", so every new machine running the bootstrap one-liner
+installs it. Previous release was `v2.3.2` from April. `v2.4.0` is **breaking**: `-role runner`,
+`-role ce-corp`, `-role ce-free`, `containers/` and `-installStax2AWS` are all gone.
+
+**Next steps, in order.** Items 1-4 are all done; what remains is housekeeping and the open
+items listed under "Remaining" further down.
+1. ~~Run the Docker CE flow on the test VM (G7 step 2)~~ - **done: runs 5, 5b, 6, 7, 7b, 8.**
+   G7 is closed.
 2. ~~Fold `install-docker-ce.ps1` into the orchestrator~~ — **done 2026-09-14 (G28).**
 3. ~~Ask the user, then act: keep or delete `containers/` and the `ce-corp` / `ce-free` roles~~ —
    **done 2026-09-14: all three deleted on request.**
@@ -87,9 +89,9 @@ Each item records the failure, the file/line, and the intended fix.
 **Status: 22 of 22 closed.** Line numbers below refer to the code *as audited*, before any fixes
 were applied, so they will not match the current files. Three items were resolved differently from
 the original finding — see the scope notes on items 18, 20 and 22 — and item 21's premise turned out
-to be wrong. Nothing here has been executed on a real machine: every change is verified only by
-parser/syntax checks, JSON validation, and unit-testing the winget output parser. A run on a
-throwaway VM is still required before cutting a release.
+to be wrong. *(That original caveat - "nothing here has been executed on a real machine" - held
+until 2026-09-13/14. It has since been executed: see G7 and run 7. Nine further bugs, G23-G31,
+turned up only then.)*
 
 ---
 
@@ -237,7 +239,7 @@ throwaway VM is still required before cutting a release.
 
 ---
 
-## Goal: unattended completion with auto-resume (2026-09-11, code complete, awaiting VM run)
+## Goal: unattended completion with auto-resume (2026-09-11; validated on a real machine 2026-09-14)
 
 > Requirement: setup must complete **without manual interaction** and **auto-resume if a reboot is
 > needed**.
@@ -326,7 +328,25 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Remaining
 
-- [ ] **G7. Run it end to end on a throwaway VM.** Nothing here has executed on a real machine.
+Nothing blocking. `v2.4.0` is released and validated; the items below are housekeeping.
+
+- [ ] **G32. Retire the test VM.** `vm-wstest-01` in `S101-ARG-WSTEST-MRL` is left **running**
+  after run 7, with autologon enabled and its password in the registry in clear text, plus a spare
+  OS disk (`vm-wstest-01-osdisk-202609131329`) kept only so run-5b/6 evidence stayed inspectable.
+  That evidence has served its purpose now the release is cut. Either
+  `az vm deallocate --subscription $sub -g $rg -n $vm` to keep it for the next release, or
+  `az group delete -n S101-ARG-WSTEST-MRL --subscription $sub --yes --no-wait` to remove it
+  entirely. It costs ~AUD 0.35/h while running and auto-shuts-down at 14:00 UTC.
+
+- [ ] **G33. `docker run` output is invisible in the repo's own test harness.** Native `docker` CLI
+  stdout comes back empty inside a non-interactive scheduled task, even through
+  `cmd /c ... > file`. It is only a *testing* problem - interactive users see output normally - but
+  it produced two false alarms during run 7 and cost real time. If the VM harness is used again,
+  verify the daemons through the HTTP API (`GET /version`, `/containers/{id}/logs`) rather than the
+  CLI, and remember `Invoke-WebRequest` needs `-UseBasicParsing` on PowerShell 5.1.
+
+- [x] **G7. Run it end to end on a throwaway VM. DONE 2026-09-13/14** (runs 1-8; run 4 closed the
+  workstation half, run 7 the Docker CE half). Originally: nothing had executed on a real machine.
   Verified so far only by: parser checks on all `.ps1`, `bash -n` on both shell scripts, JSON
   validation, unit tests of the resume-command builder (including quote escaping), unit tests of
   the state machine (fresh/reload/single-element-collapse/old-schema/corrupt-file), and — after the
