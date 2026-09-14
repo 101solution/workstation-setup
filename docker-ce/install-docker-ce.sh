@@ -23,5 +23,17 @@ fi
 sudo systemctl daemon-reload
 echo "current user is $USER"
 sudo usermod -aG docker "$USER"
-echo "Restarting WSL so the docker group and the patched unit file take effect..."
-sudo shutdown -r now
+
+# Restart the daemon rather than the whole distro. `sudo shutdown -r now` used to be here, to load
+# the patched unit file, but `systemctl daemon-reload` above already does that, and the shutdown
+# turned out to hang indefinitely under systemd-in-WSL: on 2026-09-14 a re-run sat in
+# `bash ./install-docker-ce.sh` for 20 minutes with unattended-upgrade-shutdown holding the
+# shutdown path, wedging the whole unattended install. It worked on the first run and hung on the
+# second, so it was non-deterministic as well as unnecessary. Proof it was unnecessary: during that
+# hang, docker was already `active` and listening on 127.0.0.1:2375.
+# The one thing the restart also did was make `usermod -aG docker` effective immediately; that does
+# not matter here, because the Windows client reaches the daemon over TCP and any new WSL session
+# picks up the group anyway.
+echo "Restarting the docker service so the patched unit file takes effect..."
+sudo systemctl restart docker
+sudo systemctl is-active docker

@@ -277,9 +277,26 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
     }
 
     Write-SetupLog "Configuring Docker on Linux (WSL2 $distroName) ..."
-    # install-docker-ce.sh ends with `sudo shutdown -r now`, which tears down this wsl.exe session,
-    # so its exit code is not meaningful.
-    & wsl.exe --distribution $distroName -- bash ./install-docker-ce.sh
+    # Bounded, because an unattended install must never be able to wedge forever. It did: the
+    # script's old `sudo shutdown -r now` hung for 20 minutes under systemd-in-WSL on 2026-09-14
+    # (G30). That line is gone, but the timeout stays - apt is a network operation and this phase
+    # has no other way to give up. On timeout the wsl.exe launcher is killed and the phase throws,
+    # so the next run retries it rather than the build hanging silently.
+    $installTimeout = [TimeSpan]::FromMinutes(30)
+    $wslProcess = Start-Process -FilePath 'wsl.exe' `
+        -ArgumentList @('--distribution', $distroName, '--', 'bash', './install-docker-ce.sh') `
+        -NoNewWindow -PassThru
+    # Reading .Handle caches the process handle. Without it, .ExitCode below is empty even once the
+    # process has exited - a documented Start-Process -PassThru quirk, verified on 5.1.26100.
+    # Also note Windows PowerShell 5.1 has only WaitForExit() and WaitForExit([int]); the
+    # WaitForExit([TimeSpan]) overload is .NET 5+, so the timeout must be passed as milliseconds.
+    $null = $wslProcess.Handle
+    if (-not $wslProcess.WaitForExit([int]$installTimeout.TotalMilliseconds)) {
+        Write-SetupLog "  install-docker-ce.sh exceeded $($installTimeout.TotalMinutes) minutes; killing it."
+        try { $wslProcess.Kill() } catch { }
+        throw "install-docker-ce.sh did not finish within $($installTimeout.TotalMinutes) minutes. Check 'wsl -d $distroName -- systemctl status docker' and the apt logs in the distro."
+    }
+    Write-SetupLog "  install-docker-ce.sh exited $($wslProcess.ExitCode)."
 
     # Verify what the client will actually use: a TCP connect to 2375 from WINDOWS. The old check
     # ran `wsl -- docker version`, which talks to the unix socket inside the distro and - worse -

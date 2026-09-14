@@ -21,8 +21,17 @@ GitHub release, so none of this reaches anyone until a `v2.x.y` tag is cut.
 2. ~~Fold `install-docker-ce.ps1` into the orchestrator~~ — **done 2026-09-14 (G28).**
 3. ~~Ask the user, then act: keep or delete `containers/` and the `ce-corp` / `ce-free` roles~~ —
    **done 2026-09-14: all three deleted on request.**
-4. Re-run the Docker CE flow on the VM to confirm G26/G27/G28 (the merge touched the code path that
-   run 5b verified), then cut the release. Update README if the role table changed.
+4. Re-run the Docker CE flow on the VM to confirm G26/G27/G28/G30, then cut the release.
+   **Run 6 (2026-09-14, `-force` on the run-5b disk) did not finish: it hung in `docker-linux`
+   and exposed G30.** It did confirm the merged structure works — `containers-feature`,
+   `environment` and `docker-windows` all completed, and `Install-WindowsDocker` reported
+   *"C:\docker\dockerd.exe is already present"* then *"Windows Docker daemon is up"*. It also
+   confirmed, as predicted, that this disk cannot exercise G23/G24/the gate: `rebootCount` stayed 0
+   with a null resume command. The run was killed and its state file deleted rather than being let
+   fall through to the TCP check, which would have started the distro and recorded a misleading
+   `done`. **Next run must be from the clean snapshot** (approved 2026-09-14), which needs
+   `az vm user update` to reset `azureadmin` first, since autologon does not survive the restore
+   and the old password file is gone.
 
 **The test VM.** `vm-wstest-01`, resource group `S101-ARG-WSTEST-MRL`, subscription VS_Sub_MRL
 `1f513fde-7a26-4aae-a69e-3f29f41d7f2a` in the user's personal tenant `5509d93f-…`. If `az` says
@@ -549,6 +558,30 @@ Design is documented in the "Unattended execution and reboot resume" section of 
     The lifecycle experiment that proved all of this is worth keeping: terminate the distro =>
     `netstat` shows nothing on 2375 and bare `docker version` exits 1; `wsl -d Ubuntu -- /bin/true`
     => 2375 LISTENING within ~15 s and `docker run hello-world` exits 0.
+
+- [x] **G30. `install-docker-ce.sh`'s final `sudo shutdown -r now` hung the whole install, and
+  `docker-linux` had no timeout to escape it** (found 2026-09-14 by run 6, the `-force` pass).
+  The phase started at 02:34:08 and logged nothing for 20 minutes. Inside the distro:
+  `552 Ss+ 1204 bash ./install-docker-ce.sh` still sitting there, `unattended-upgrade-shutdown
+  --wait-for-signal` in the shutdown path, **no** apt or dpkg locks held, and `apt term.log`'s last
+  entry from `01:32:05` — i.e. run 5's install, so apt had done nothing at all this time. systemd's
+  shutdown simply never completed. It had completed on the first run and hung on the second, so the
+  behaviour is **non-deterministic**, which is the worst kind of defect for an unattended installer.
+  *The reboot was also unnecessary.* It predates audit item 3, which added `systemctl daemon-reload`
+  — that already loads the patched unit. The decisive evidence: during the hang, `systemctl
+  is-active docker` was `active` and `ss -ltn` showed `LISTEN 127.0.0.1:2375`, with the reboot never
+  having completed. *Fixed:* the shell script now ends with `systemctl restart docker` plus an
+  `is-active` echo. The only thing the distro restart also bought was making `usermod -aG docker`
+  effective at once, which does not matter here — the Windows client reaches the daemon over TCP,
+  and any new WSL session picks the group up anyway.
+  *Fixed separately, and kept regardless:* `docker-linux` now runs the script through
+  `Start-Process -PassThru` with a **30-minute bounded wait**, killing the launcher and throwing on
+  timeout. A phase with no way to give up can wedge a hands-off build forever; apt is a network
+  operation, so the timeout earns its place even with the shutdown gone. Two 5.1 traps verified
+  locally while writing it: `WaitForExit([TimeSpan])` is .NET 5+ only, so the timeout must be passed
+  as `[int]` milliseconds under Windows PowerShell 5.1; and `.ExitCode` on a
+  `Start-Process -PassThru` object is **empty** unless `.Handle` is read first, even after
+  `HasExited` is true.
 
 - [x] **G28. `install-docker-ce.ps1` folded into `config-docker.ps1`** (2026-09-14, on request).
   Once feature enabling moved to the `containers-feature` phase, the worker's only reason to be a
