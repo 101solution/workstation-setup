@@ -103,12 +103,11 @@ function Install-ContainerHost {
     #
     # Install, register, and start Docker
     #
-    if (Test-Docker) {
-        Write-Output "Docker is already installed."
-    }
-    else {
-        Install-Docker
-    }
+    # Install-Docker is idempotent and checks each piece of the end state separately. Do NOT gate it
+    # on Test-Docker: the service is registered early, so a run that failed after that point would
+    # look "already installed" on retry and the phase would be recorded complete with no daemon.json
+    # and no 'win' context.
+    Install-Docker
 
     Write-Output "Script complete!"
 }
@@ -154,27 +153,52 @@ function Install-Docker() {
         $ContainerBaseImage = "hello-world"
     )
 
-    $zipPath = Join-Path $env:TEMP "docker-$DockerVersion.zip"
-    curl.exe -o $zipPath -L https://download.docker.com/win/static/stable/x86_64/docker-$DockerVersion.zip
-    if (-not (Test-Path -LiteralPath $zipPath)) {
-        throw "Docker Engine download failed; $zipPath was not created."
+    if (-not (Test-Path -LiteralPath 'C:\docker\dockerd.exe')) {
+        $zipPath = Join-Path $env:TEMP "docker-$DockerVersion.zip"
+        curl.exe -o $zipPath -L https://download.docker.com/win/static/stable/x86_64/docker-$DockerVersion.zip
+        if (-not (Test-Path -LiteralPath $zipPath)) {
+            throw "Docker Engine download failed; $zipPath was not created."
+        }
+        Expand-Archive -LiteralPath $zipPath -DestinationPath C:\ -Force
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     }
-    Expand-Archive -LiteralPath $zipPath -DestinationPath C:\ -Force
-    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-    [Environment]::SetEnvironmentVariable("Path", "$($env:path);C:\docker", [System.EnvironmentVariableTarget]::Machine)
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::Machine)
-    dockerd --register-service --service-name $global:DockerServiceName
-    if(-not (Test-Path -Path  "$($env:ProgramData)\docker\config\") )
-    {
-        Start-Docker
-        Start-Sleep -Seconds 10
-        Stop-Docker
-    }
-    Copy-Item "$($global:ScriptFolder)\daemon.json" "$($env:ProgramData)\docker\config\"
 
-    Start-Docker
-    docker context create win --docker host=tcp://127.0.0.1:2378
+    # Append to the MACHINE Path, never to $env:Path: the process value is Machine and User merged,
+    # so writing it back bakes the running user's private directories (WindowsApps, WinGet\Links,
+    # .dotnet\tools, ...) into the machine Path for every other user on the box. Verified on the
+    # test VM, which collected five of azureadmin's directories that way.
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', [System.EnvironmentVariableTarget]::Machine)
+    if (($machinePath -split ';') -notcontains 'C:\docker') {
+        [Environment]::SetEnvironmentVariable('Path', "$($machinePath.TrimEnd(';'));C:\docker", [System.EnvironmentVariableTarget]::Machine)
+    }
+    if (($env:Path -split ';') -notcontains 'C:\docker') { $env:Path = "$env:Path;C:\docker" }
+    [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2378", [System.EnvironmentVariableTarget]::Machine)
+
+    if (-not (Test-Docker)) {
+        dockerd --register-service --service-name $global:DockerServiceName
+    }
+
+    # dockerd creates its data directories on first run but NOT config\. The 20.10 build did, which
+    # is the only reason starting and stopping the service here used to produce it; 29.x does not,
+    # so daemon.json has to be given a directory to land in or the copy fails with "The directory
+    # name is invalid" and the Windows daemon never gets its TCP endpoint.
+    $configDir = Join-Path $global:DockerDataPath 'config'
+    if (-not (Test-Path -LiteralPath $configDir)) {
+        New-Item -Path $configDir -ItemType Directory -Force | Out-Null
+    }
+    Copy-Item "$($global:ScriptFolder)\daemon.json" $configDir -Force
+
+    # daemon.json has to be in place before the daemon reads it, so restart if it is already up.
+    if ((Get-Service -Name $global:DockerServiceName).Status -eq 'Running') {
+        Restart-Service -Name $global:DockerServiceName
+    }
+    else {
+        Start-Docker
+    }
+
+    if ((docker context ls --format '{{.Name}}' 2>$null) -notcontains 'win') {
+        docker context create win --docker host=tcp://127.0.0.1:2378
+    }
     #
     # Waiting for docker to come to steady state
     #

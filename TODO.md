@@ -454,6 +454,57 @@ Design is documented in the "Unattended execution and reboot resume" section of 
   **(a) above is closed. Remaining for G7: (b) the Docker CE flow.** The VM is left in this
   post-run state, which is exactly the precondition `docker-ce/config-docker.ps1` needs.
 
+  **Run 5 result (2026-09-14, G7 step 2, the Docker CE flow, code at `ea14a11`). The Linux half
+  passed; `docker-windows` FAILED.** 2 runs, 1 reboot (01:29 → 01:32 UTC), state
+  `docker-ce-state.json`, transcript `docker-ce-config-20260914T0132191606.log` on the VM.
+  - *Worked:* `containers-feature` enabled Containers + `Microsoft-Hyper-V` and deferred; the gate
+    registered `docker-ce-config-resume` and rebooted; the at-logon resume skipped the completed
+    phases; `environment` set the three user variables; `docker-linux` installed docker-ce in
+    Ubuntu, patched the unit file, and the daemon answered — *"Linux Docker daemon is up"* after
+    ~10 s of the 12-attempt wait. `Complete-Setup` correctly refused to record `done`, reported
+    `finished with 1 FAILED phase(s): docker-windows`, and still removed the resume task.
+    **The reboot count stayed at 1 — the `Install-Feature` Hyper-V naming bug below did not loop.**
+  - *Failed:* `Copy-Item daemon.json` → **"The directory name is invalid."** Three separate bugs,
+    all now fixed in `install-docker-ce.ps1` but **not yet re-verified on the VM** (blocked on
+    getting the patched file onto the box):
+    - [x] **G23. `%ProgramData%\docker\config\` is never created, so `daemon.json` cannot be copied
+      and the Windows daemon never gets its TCP endpoint.** `Install-Docker` started and stopped the
+      service for 10 s purely so `dockerd` would create that directory. Docker **20.10.23 did;
+      29.8.0 does not** — verified on the VM, where `dockerd` created 12 data subdirectories
+      (`buildkit`, `containers`, `content`, `image`, `network`, `volumes`, `windowsfilter`, …) and
+      no `config`. So the **G14 version bump reintroduced audit item 5's bug class**: a `Copy-Item`
+      into a directory that does not exist yet. *Fixed:* `New-Item` the directory explicitly,
+      `Copy-Item -Force`, and the start/sleep/stop dance deleted — it had no other purpose.
+    - [x] **G24. `Install-Docker` corrupted the machine `Path`.**
+      `SetEnvironmentVariable("Path", "$($env:path);C:\docker", Machine)` wrote the *process* Path —
+      Machine and User already merged — back into the Machine scope. Confirmed on the VM: five of
+      `azureadmin`'s private directories (`…\WindowsApps`, `…\Programs\Microsoft VS Code\bin`,
+      `…\WinGet\Links`, `…\.dotnet\tools`, `…\PowerToys\DSCModules\`) ended up in the machine Path,
+      where every other user on the box would inherit them. *Fixed:* read the Machine value, append
+      `C:\docker` only if absent, write that back; update `$env:Path` separately.
+      (`Update-EnvironmentPath`, which did this correctly, was deleted as runner-only under G19.)
+    - [x] **G25. A part-failed Windows install looks complete on retry.** `Install-ContainerHost`
+      gated the whole install on `if (Test-Docker)`, which only asks whether the *service exists*.
+      The service is registered several steps before `daemon.json` and the `win` context, so after
+      this failure a re-run would print "Docker is already installed", skip everything, and let
+      `Invoke-SetupPhase` record `docker-windows` **complete** with no `daemon.json` and no `win`
+      context — silently breaking the "re-running is always safe" premise the whole design rests on.
+      *Fixed:* `Install-Docker` is called unconditionally and checks each piece of the end state
+      separately (binaries, service, config dir, context).
+  - *Still open, not hit this run:* `install-docker-ce.ps1`'s own legacy `Install-Feature` asks for
+    the **ServerManager** name `Hyper-V` where the DISM name on a client SKU is `Microsoft-Hyper-V`
+    (which `Enable-ContainerFeature` in `helper.ps1` gets right). On client it therefore falls into
+    the `else` branch, logs "Feature Hyper-V is already enabled", and defers to
+    `(Get-WindowsEdition -Online).RestartNeeded`. Harmless here because that was false, but if it
+    ever returns true the phase exits 3010 on every run and the gate reboots forever. Now that
+    `config-docker.ps1` owns the features via `Enable-ContainerFeature`, the whole `Install-Feature`
+    function in the worker is redundant and should be deleted rather than fixed.
+  - *Test-VM state, left as the run ended:* the machine `Path` **still carries** the five leaked
+    `azureadmin` entries (not yet cleaned), and the `C:\docker` binaries, the registered-but-stopped
+    `docker` service and the 12 `dockerd` data directories are all present. Note that because
+    `C:\docker` is already on the machine Path, a retry on this disk will **not** exercise G24's
+    fixed write path — that one can only be verified from the clean snapshot.
+
 - [x] **G11. `docker-ce/linux/systemd/` removed** (2026-09-13). Run 3a showed `systemctl
   is-system-running` = `running` in the freshly registered Ubuntu 26.04 with nothing but
   `/etc/wsl.conf` (`systemd=true`, which current Ubuntu images also ship by default). The four
