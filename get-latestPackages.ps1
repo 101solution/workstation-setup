@@ -2,7 +2,13 @@
 param (
     [Parameter()]
     [string]
-    $role = "mrldev"
+    $role = "mrldev",
+    [Parameter(HelpMessage = "Forwarded to config-workstation.ps1 -gitUser.")]
+    [string]
+    $gitUser = "",
+    [Parameter(HelpMessage = "Forwarded to config-workstation.ps1 -gitEmail.")]
+    [string]
+    $gitEmail = ""
 )
 $configPath = "c:\config"
 if (Test-Path -Path "$configPath" -PathType Container) {
@@ -37,4 +43,11 @@ if (Test-Path -Path "$configPath\workstation" -PathType Container) {
 Get-Item -Path "$configPath\101solution-workstation-*" | Rename-item -NewName "workstation"
 Remove-Item -Path "$configPath\workstation.zip" -Force
 Write-Output "Start workstation configuration..."
-powershell.exe -executionpolicy bypass -file $configPath\workstation\config-workstation.ps1 -role $role
+# Forward the git identity when given. Without this the documented one-liner left git with no
+# user.name/user.email - the shipped .gitconfig sets neither - so a new machine's first commit
+# failed with "Please tell me who you are" (TODO G35). Found by run 9, the first test to use the
+# documented path instead of calling config-workstation.ps1 with parameters directly.
+$setupArgs = @('-executionpolicy', 'bypass', '-file', "$configPath\workstation\config-workstation.ps1", '-role', $role)
+if (-not [string]::IsNullOrWhiteSpace($gitUser))  { $setupArgs += @('-gitUser', $gitUser) }
+if (-not [string]::IsNullOrWhiteSpace($gitEmail)) { $setupArgs += @('-gitEmail', $gitEmail) }
+powershell.exe @setupArgs

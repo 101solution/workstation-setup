@@ -20,11 +20,14 @@ Last validated end to end on 2026-09-14 by running **this exact one-liner** agai
 fresh Windows 11 Enterprise 24H2 VM: role `mrl`, 9 phases, one reboot, ~13.5 minutes, followed by
 the Docker CE step and both daemons verified.
 
-> **Note:** the one-liner cannot set your git identity — it only forwards `-role`. Afterwards, run:
-> ```powershell
-> git config --global user.name "Your Name"; git config --global user.email "you@example.com"
-> ```
-> or use the [manual setup](#manual-setup) below with `-gitUser`/`-gitEmail`.
+To set your git identity at the same time, add `-gitUser` and `-gitEmail` — they are forwarded to
+`config-workstation.ps1`:
+
+```powershell
+Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstation-setup/main/get-latestPackages.ps1" -OutFile "$env:temp\get-latestPackages.ps1"; powershell.exe -executionpolicy bypass -file $env:temp\get-latestPackages.ps1 -role mrldev -gitUser "Your Name" -gitEmail "you@example.com"
+```
+
+Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask who you are.
 
 ## Available Roles
 
