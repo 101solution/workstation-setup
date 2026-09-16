@@ -93,9 +93,14 @@ powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role mrl 
 
 Transcript logs are written to `logs\` next to the script as `workstation-config-<date>.log`.
 
-## Docker without Docker Desktop
+## Docker without Docker Desktop (optional)
 
-After the workstation setup has finished (it provides WSL2 Ubuntu), run:
+**This step is opt-in and separate from the workstation setup.** Nothing in
+`config-workstation.ps1` installs or needs Docker, so skip this section entirely if you do not
+want it.
+
+Run it *after* the workstation setup has finished, because the Linux daemon is installed inside
+the WSL2 Ubuntu distro that setup registers:
 
 ```powershell
 powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
@@ -103,11 +108,18 @@ powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
 
 It installs a Windows Docker daemon and a Linux one inside WSL2 side by side, with the same
 unattended phase/resume behaviour and the same `-resumeMethod`, `-noReboot` and `-force` switches.
+It keeps its own state file, so its progress and the workstation setup's can never interfere.
 Details in [docker-ce/README.md](docker-ce/README.md).
 
+It is a separate script rather than another phase because each entry point is designed to reboot
+**at most once**, and these two need different restarts: the workstation setup reboots to register
+the WSL2 distro, while `dockerd` cannot start until the Containers feature is live, which needs a
+restart of its own.
+
 Note that bare `docker` needs the WSL distro running, and WSL2 shuts an idle distro down after
-about a minute. The install registers an at-logon task that holds a session open for you. If bare
-`docker` ever does fail, start the distro and retry:
+about a minute. The install registers an at-logon task (`docker-ce-wsl-autostart`) that holds a
+session open for you — it comes with this step, so a workstation-only machine will not have it.
+If bare `docker` ever does fail, start the distro and retry:
 
 ```powershell
 wsl -d Ubuntu -- /bin/true
