@@ -9,7 +9,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.DotNet.SDK.8",
+      "id": "Microsoft.DotNet.SDK.10",
       "source": "winget"
     },
     {
@@ -21,7 +21,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.VisualStudio.2022.Enterprise",
+      "id": "Microsoft.VisualStudio.Enterprise",
       "override": "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.Azure --add Microsoft.VisualStudio.Workload.NetWeb",
       "source": "winget"
     },
@@ -63,6 +63,14 @@
     },
     {
       "id": "Hashicorp.Terraform",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.PowerToys",
+      "source": "winget"
+    },
+    {
+      "id": "paolosalvatori.ServiceBusExplorer",
       "source": "winget"
     }
   ],

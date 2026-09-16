@@ -13,6 +13,14 @@
       "source": "winget"
     },
     {
+      "id": "GitHub.cli",
+      "source": "winget"
+    },
+    {
+      "id": "rsteube.Carapace",
+      "source": "winget"
+    },
+    {
       "id": "Microsoft.VisualStudioCode",
       "override": "/mergetasks=addcontextmenufiles,addcontextmenufolders,!runcode /verysilent",
       "source": "winget"
@@ -38,14 +46,23 @@
       "source": "winget"
     },
     {
+      "id": "Anthropic.Claude",
+      "source": "winget"
+    },
+    {
       "id": "OpenAI.Codex",
+      "source": "winget"
+    },
+    {
+      "id": "OpenJS.NodeJS.LTS",
+      "source": "winget"
+    },
+    {
+      "id": "GoLang.Go",
       "source": "winget"
     }
   ],
   "powershellModule": [
-    {
-      "name": "posh-git"
-    },
     {
       "name": "PSReadLine"
     },

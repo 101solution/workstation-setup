@@ -1,23 +1,15 @@
 {
   "winget": [
     {
-      "id": "Kubernetes.kubectl",
+      "id": "Hashicorp.Terraform",
       "source": "winget"
     },
     {
-      "id": "Microsoft.DotNet.SDK.8",
+      "id": "Microsoft.DotNet.SDK.10",
       "source": "winget"
     },
     {
       "id": "Microsoft.AzureCLI",
-      "source": "winget"
-    },
-    {
-      "id": "GitHub.cli",
-      "source": "winget"
-    },
-    {
-      "id": "Kubernetes.minikube",
       "source": "winget"
     },
     {
@@ -29,26 +21,29 @@
       "source": "winget"
     },
     {
-      "id": "Hashicorp.Terraform",
+      "id": "Microsoft.PowerToys",
       "source": "winget"
     },
     {
-      "id": "OpenJS.NodeJS.LTS",
+      "id": "Microsoft.Azure.StorageExplorer",
+      "source": "winget"
+    },
+    {
+      "id": "Microsoft.Azure.AZCopy.10",
+      "source": "winget"
+    },
+    {
+      "id": "paolosalvatori.ServiceBusExplorer",
+      "source": "winget"
+    },
+    {
+      "id": "Kubernetes.kubectl",
+      "source": "winget"
+    },
+    {
+      "id": "Kubernetes.minikube",
       "source": "winget"
     }
   ],
-  "powershellModule": [
-    {
-      "name": "posh-git"
-    },
-    {
-      "name": "PSReadLine"
-    },
-    {
-      "name": "PSRule"
-    },
-    {
-      "name": "AWSPowerShell.NetCore"
-    }
-  ]
+  "powershellModule": []
 }

@@ -3,7 +3,10 @@ Set-Variable HOME "#workFolder#" -Force
 
 # Set the "~" shortcut value for the FileSystem provider
 (get-psprovider 'FileSystem').Home = "#workFolder#"
-Import-Module Posh-Git
+# Skipped when unavailable: endpoint policy can block the unsigned binary.
+if (Get-Command carapace -ErrorAction SilentlyContinue) {
+    carapace _carapace powershell | Out-String | Invoke-Expression
+}
 oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\rudolfs-light-cs.omp.json" | Invoke-Expression
 Import-Module PSReadLine
 

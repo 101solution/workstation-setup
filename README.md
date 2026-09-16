@@ -33,15 +33,15 @@ Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask
 
 | Role | Description |
 |------|-------------|
-| `mrldev` | Full developer setup — VS Enterprise, SSMS, DBeaver, Sourcetree, TortoiseGit, Power BI, Wireshark, Bruno, and more |
-| `mrl` | Lighter setup — Terraform, .NET SDK 8, Azure CLI, Bruno, AWS CLI, PowerToys, Storage Explorer, AZCopy |
-| `cloudEngineer` | Cloud engineering — kubectl, minikube, Terraform, .NET SDK 8, Azure CLI, GitHub CLI, Bruno, AWS CLI, NodeJS LTS; AWSPowerShell.NetCore module |
-| `developer` | .NET SDK 8, Azure CLI, Bruno, Terraform |
+| `mrldev` | Everything in `mrl`, plus VS Enterprise, SSMS, DBeaver, Sourcetree, TortoiseGit, Power BI, Wireshark, WinSCP, Notepad++ |
+| `mrl` | Lighter setup — Terraform, .NET SDK 10, Azure CLI, Bruno, AWS CLI, PowerToys, Storage Explorer, AZCopy, Service Bus Explorer |
+| `cloudEngineer` | Everything in `mrl`, plus kubectl and minikube |
+| `developer` | .NET SDK 10, Azure CLI, Bruno, Terraform |
 | `min` | The base packages only, nothing role-specific |
 
-Every role layers on the base packages from `packages-min.json`: PowerShell, Git, VS Code,
-Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, Claude Code, Codex CLI, posh-git,
-PSReadLine, PSRule. `min` is just that base.
+Every role layers on the base packages from `packages-min.json`: PowerShell, Git, GitHub CLI,
+VS Code, Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, Claude Code, Claude desktop,
+Codex CLI, Node.js LTS, Go, Carapace, PSReadLine, PSRule. `min` is just that base.
 
 ## Manual Setup
 

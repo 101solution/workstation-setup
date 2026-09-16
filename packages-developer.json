@@ -1,7 +1,7 @@
 {
   "winget": [
     {
-      "id": "Microsoft.DotNet.SDK.8",
+      "id": "Microsoft.DotNet.SDK.10",
       "source": "winget"
     },
     {

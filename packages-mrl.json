@@ -5,7 +5,7 @@
       "source": "winget"
     },
     {
-      "id": "Microsoft.DotNet.SDK.8",
+      "id": "Microsoft.DotNet.SDK.10",
       "source": "winget"
     },
     {
@@ -30,6 +30,10 @@
     },
     {
       "id": "Microsoft.Azure.AZCopy.10",
+      "source": "winget"
+    },
+    {
+      "id": "paolosalvatori.ServiceBusExplorer",
       "source": "winget"
     }
   ],
