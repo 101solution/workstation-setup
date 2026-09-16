@@ -1,1 +1,2 @@
 - [Avoid scheduled tasks](avoid-scheduled-tasks-preference.md) — lead with task-free resume options; elevated auto-resume has a hard constraint
+- [VM test rig credentials](vm-test-rig-credentials.md) — the admin file is two lines, never use `az run-command --parameters`, and gate the restart on the generated role
