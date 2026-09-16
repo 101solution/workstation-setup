@@ -16,9 +16,9 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
-Last validated end to end on 2026-09-14 by running **this exact one-liner** against `v2.4.0` on a
-fresh Windows 11 Enterprise 24H2 VM: role `mrl`, 9 phases, one reboot, ~13.5 minutes, followed by
-the Docker CE step and both daemons verified.
+Last validated end to end on 2026-09-16 on a fresh Windows 11 Enterprise 24H2 VM: role `mrldev`,
+9 phases, one reboot, 33 minutes including Visual Studio Enterprise 2026. Role `mrl` completed the
+same day in 16 minutes, and the Docker CE step with both daemons verified on 2026-09-14.
 
 To set your git identity at the same time, add `-gitUser` and `-gitEmail` — they are forwarded to
 `config-workstation.ps1`:

@@ -25,10 +25,10 @@ compute cost is zero. The two superseded OS disks were deleted today, leaving on
 `snap-vm-wstest-01-clean-20260911` is intact and is what G36 restores from — remember
 `az vm user update` to reset `azureadmin` first, since autologon does not survive a restore.
 
-**Live gate: G36.** Commit `f3aeba9` (2026-09-16) refreshed every role manifest — .NET SDK 10,
+**Live gate: none.** G36 passed on 2026-09-16 (run 11), so `v2.5.0` can be cut from `main`.
+Commit `f3aeba9` (2026-09-16) refreshed every role manifest — .NET SDK 10,
 VS Enterprise 2026, five new base-layer packages, `posh-git` replaced by `carapace` — and none of
-it has run on a real machine. Push `main` freely; **do not cut a release until the `-role mrldev`
-run under G36 passes.**
+it had run on a real machine when that was written; run 11 has since validated it on `mrldev`.
 
 
 **The test VM.** `vm-wstest-01`, resource group `S101-ARG-WSTEST-MRL`, subscription VS_Sub_MRL
@@ -82,7 +82,11 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
-- [ ] **G36. Validate the 2026-09-16 manifest refresh on a clean VM before cutting a release.**
+- [x] **G36. Validate the 2026-09-16 manifest refresh on a clean VM before cutting a release.**
+  **DONE 2026-09-16 by run 11** (role `mrldev`, 9 phases, one reboot, 33 minutes): VS 2026 with
+  both workloads confirmed via `vswhere`, SDK 10.0.401, 0 profile load errors, carapace
+  completing `git`/`terraform`/`gh`. Full record in `VALIDATION-HISTORY.md`. The release is no
+  longer blocked. Original plan below.
   Commit `f3aeba9` changed what every role installs and **none of it has run on a real machine**.
   Static checks are green (all `.ps1` parse, all five manifests `ConvertFrom-Json`), which per this
   repo's own history means almost nothing — G23-G31 all passed those too. `main` can be pushed

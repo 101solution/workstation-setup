@@ -297,6 +297,34 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Closed items from "Remaining"
 
+- [x] **RUN 11 (2026-09-16): role `mrldev` on the new manifests. PASSED.** The run G36 asked for,
+  from a fresh restore of `snap-vm-wstest-01-clean-20260911`, on `main` at `85aaf52`.
+  9 phases, **one reboot**, `runCount` 2, `startedUtc` 02:23:27Z → `lastRunUtc` 02:56:34Z, so
+  **33 minutes** including Visual Studio. Verified, not assumed:
+  - **VS Enterprise 2026** at `C:\Program Files\Microsoft Visual Studio\18\Enterprise` with
+    **both** workloads from the `override` present, confirmed via
+    `vswhere -requires Microsoft.VisualStudio.Workload.Azure` and `...Workload.NetWeb`. Note the
+    install path is by **major version (18)**, not by year - an intermediate check that looked for
+    `...\Microsoft Visual Studio\2026` reported `False` and was simply measuring the wrong path.
+  - `dotnet --list-sdks` = `10.0.401`.
+  - In a real `azureadmin` pwsh session with the deployed profile: **0 profile load errors**, prompt
+    renders 452 chars with 0 errors, theme file present, `$HOME` = `c:\projects`.
+  - Completion via carapace: `git chec` → `check-attr`/`check-ignore`/`checkout`,
+    `terraform pl` → `plan`, `gh pr ` → `checkout`/`checks`/`close`/`co`.
+  - Both MSIX oh-my-posh fixes (`4795534`) confirmed: `PATH has pkg: True` and the package exe
+    resolved, against 5 errors plus a modal App Installer dialog before the fix.
+
+  **PowerShell 7 and oh-my-posh both install as MSIX packages here**
+  (`Microsoft.PowerShell_7.6.6.0_x64`, `ohmyposh.cli_31.3.0.0_x64`), each reached through a 0-byte
+  app-execution-alias stub with the real exe inside `C:\Program Files\WindowsApps\...`. Anything
+  that launches them with `Process.Start` and `UseShellExecute=$false` must resolve the package
+  folder first; the stub fails with "The file cannot be accessed by the system". That is the same
+  trap as CLAUDE.md's "never call `winget` or `wt` bare", now known to cover `pwsh` and
+  `oh-my-posh` too.
+
+  Two driver faults cost ~35 minutes before this run started properly; both are recorded in
+  `.claude/memory/vm-test-rig-credentials.md`.
+
 - [x] **G32. Retire the test VM. DONE 2026-09-14.** Deallocated, and autologon plus the cleartext `DefaultPassword` removed from the registry (`AutoAdminLogon=0`, `DefaultPassword present=False`, `DefaultUserName` cleared) - the credential exposure is gone and compute cost is zero. All test scheduled tasks had self-unregistered; the product's own `docker-ce-wsl-autostart` keepalive was deliberately left in place. The clean snapshot `snap-vm-wstest-01-clean-20260911` and the current disk are retained so the next release can be validated the same way; reversible, nothing destroyed. **Two superseded OS disks remain unattached and are now pure cost** (`vm-wstest-01-osdisk-202609131329` from runs 5b/6, `...-202609140303` from run 7): delete with `az disk delete --subscription $sub -g $rg -n <name> --yes` once their evidence is definitely not wanted. **Both deleted 2026-09-16 on request**, verified unattached first and checked against the VM's live `storageProfile.osDisk.name` (`vm-wstest-01-osdisk-202609141511`, left alone); the clean snapshot `snap-vm-wstest-01-clean-20260911` was confirmed still present afterwards. Original state: left **running**
   after run 7, with autologon enabled and its password in the registry in clear text, plus a spare
   OS disk (`vm-wstest-01-osdisk-202609131329`) kept only so run-5b/6 evidence stayed inspectable.
