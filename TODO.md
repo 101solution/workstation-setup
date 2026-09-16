@@ -19,13 +19,20 @@ tag would reach nobody. It is now "Latest", so every new machine running the boo
 installs it. Previous release was `v2.3.2` from April. `v2.4.0` is **breaking**: `-role runner`,
 `-role ce-corp`, `-role ce-free`, `containers/` and `-installStax2AWS` are all gone.
 
+**Server 2025 is now part of the matrix.** Run 12 (2026-09-16) was the first Server-SKU run ever:
+`v2.5.0` completed both flows there - `mrl` in 15.5 min and Docker CE with both daemons verified -
+and found three bugs (G37, G38, G39), one of which had been silently broken on every machine since
+the theme copy was written. Validate on **one client and one Server** box from now on.
+
 **State of the test rig (2026-09-16).** `vm-wstest-01` is **deallocated** (`Standard_D4s_v5`), so
 compute cost is zero. The two superseded OS disks were deleted today, leaving only the live
-`vm-wstest-01-osdisk-202609141511`; storage cost is now one disk. The clean snapshot
+`vm-wstest-01-osdisk-202609160942`; storage cost is now one disk. The clean snapshot
 `snap-vm-wstest-01-clean-20260911` is intact and is what G36 restores from — remember
 `az vm user update` to reset `azureadmin` first, since autologon does not survive a restore.
 
-**Live gate: none.** G36 passed on 2026-09-16 (run 11), so `v2.5.0` can be cut from `main`.
+**Live gate: G37, G38 and G39, folded into one two-SKU run before `v2.5.1`.** `v2.5.0` was
+published on 2026-09-16 and is Latest; three fixes have landed on `main` since and none of them has
+had a full run.
 Commit `f3aeba9` (2026-09-16) refreshed every role manifest — .NET SDK 10,
 VS Enterprise 2026, five new base-layer packages, `posh-git` replaced by `carapace` — and none of
 it had run on a real machine when that was written; run 11 has since validated it on `mrldev`.
@@ -90,7 +97,7 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
   **It is the path, not the SKU.** winget stages installers under `%TEMP%`, inside the user profile.
   The account `chuanhui.shen` gets the 8.3 short name `CHUANH~1.SHE`, and the identical installer
-  that crashes from there succeeds when copied to `C:	emp`. `dev-cs-01` was unaffected because its
+  that crashes from there succeeds when copied to `C:\temp`. `dev-cs-01` was unaffected because its
   account is `cshen`. Bruno 3.4.2 installs fine from either path, so it is a 4.x regression.
   The WER signature matches upstream usebruno/bruno#3404 exactly (closed as no longer reproducing,
   and all its reports were Windows 11, not Server).

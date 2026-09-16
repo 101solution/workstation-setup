@@ -297,6 +297,31 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Closed items from "Remaining"
 
+- [x] **RUN 12 (2026-09-16): `v2.5.0` on Windows Server 2025, workstation + Docker. PASSED, with
+  three bugs found.** The first time this repo had ever been run on a Server SKU; runs 1-11 were all
+  Windows 10/11. Driven by the user on their own VM, not the test rig.
+  - `config-workstation.ps1 -role mrl`: 9 phases, one reboot, 04:36:43Z to 04:52:13Z = **15.5 min**,
+    within a minute of the client-SKU figure. Ubuntu registered (`wsl -l -v` shows VERSION 2,
+    `Stopped`, which is correct - `--no-launch` means it is never started).
+  - `docker-ce/config-docker.ps1`: 6 phases, one reboot, `done`. **Both daemons verified**:
+    `docker run hello-world` and `docker -c win run hello-world`. This is the first exercise of the
+    Server branch of `Enable-ContainerFeature`, which skips Hyper-V because Server can run
+    process-isolated Windows containers.
+
+  Three bugs surfaced, all now fixed on `main` and recorded as G38, G37 and G39:
+  1. **The oh-my-posh theme had never been parsed, on any machine or SKU** - `Out-File -Encoding
+     utf8` under Windows PowerShell 5.1 writes a BOM and oh-my-posh rejects it. Only visible here
+     because fixing the Server prompt speed made the `CONFIG PARSE ERROR` legible.
+  2. **MSIX oh-my-posh is unusable for a prompt on Server** - 13,000 ms per invocation against
+     57-88 ms on Windows 11, because each activation spawns
+     `Microsoft.DesktopAppInstaller!winget` first.
+  3. **`Bruno.Bruno` 4.1.0 crashes when staged under a dotted username** - the 8.3 short name
+     `CHUANH~1.SHE` breaks its NSIS `System.dll`; the same installer works from `C:	emp`.
+
+  The lesson worth keeping: one run on a SKU nobody had tried found three real defects, one of which
+  had been shipping silently since the theme copy was written. **Server 2025 belongs in the
+  validation matrix permanently.**
+
 - [x] **RUN 11 (2026-09-16): role `mrldev` on the new manifests. PASSED.** The run G36 asked for,
   from a fresh restore of `snap-vm-wstest-01-clean-20260911`, on `main` at `85aaf52`.
   9 phases, **one reboot**, `runCount` 2, `startedUtc` 02:23:27Z → `lastRunUtc` 02:56:34Z, so
