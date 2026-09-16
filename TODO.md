@@ -1,6 +1,6 @@
 # Repo Fix Backlog
 
-## Handover — start here (updated 2026-09-14)
+## Handover — start here (updated 2026-09-16)
 
 **Where things stand.** Both entry points have **passed a clean end-to-end run on a fresh machine**
 (run 7, 2026-09-14, from `snap-vm-wstest-01-clean-20260911`): `config-workstation.ps1 -role mrl`
@@ -14,6 +14,11 @@ a tag - `get-latestPackages.ps1` queries `/releases` and filters non-draft/non-p
 tag would reach nobody. It is now "Latest", so every new machine running the bootstrap one-liner
 installs it. Previous release was `v2.3.2` from April. `v2.4.0` is **breaking**: `-role runner`,
 `-role ce-corp`, `-role ce-free`, `containers/` and `-installStax2AWS` are all gone.
+
+**Live gate: G36.** Commit `f3aeba9` (2026-09-16) refreshed every role manifest — .NET SDK 10,
+VS Enterprise 2026, five new base-layer packages, `posh-git` replaced by `carapace` — and none of
+it has run on a real machine. Push `main` freely; **do not cut a release until the `-role mrldev`
+run under G36 passes.**
 
 **Next steps, in order.** Items 1-4 are all done; what remains is housekeeping and the open
 items listed under "Remaining" further down.
@@ -799,6 +804,53 @@ Nothing blocking. `v2.4.0` is released and validated; the items below are housek
   PowerShell 7 against the MSI manifest → `0x8A15008E` (technology mismatch), now logged as
   "leaving the existing install alone" rather than a generic warning.
   Not yet run on the VM — run 2 was already in flight on the previous code; run 3 will exercise it.
+
+- [ ] **G36. Validate the 2026-09-16 manifest refresh on a clean VM before cutting a release.**
+  Commit `f3aeba9` changed what every role installs and **none of it has run on a real machine**.
+  Static checks are green (all `.ps1` parse, all five manifests `ConvertFrom-Json`), which per this
+  repo's own history means almost nothing — G23-G31 all passed those too. `main` can be pushed
+  freely; it is publishing the *Release* that exposes machines, so the gate is release, not push.
+
+  **Run `-role mrldev`, not `-role mrl`.** Every prior validation run (5-9) used `mrl`, so the
+  riskiest change here has never been exercised. Budget 45-60 min: VS Enterprise dominates.
+
+  What changed, and what each item needs proving:
+  1. **VS 2022 Enterprise → `Microsoft.VisualStudio.Enterprise` (2026, 18.10.1).** The id no longer
+     carries a year, so it tracks current VS instead of pinning a major version — a future VS 2027
+     will be pulled in on any re-run, because `Install-WinGetPackage` upgrades when the source is
+     newer. Both workload ids in the `override` (`Workload.Azure`, `Workload.NetWeb`) are unchanged
+     in 2026, confirmed against the Enterprise component directory, but **that was a docs check, not
+     a run.** The failure mode is a silent partial install, so verify the workloads actually landed:
+     `vswhere -products * -requires Microsoft.VisualStudio.Workload.Azure -property installationPath`.
+     Do not treat winget's exit code as evidence — this is the same class of mistake as gating on
+     "is the service registered" (G25).
+  2. **.NET SDK 8 → 10** in `mrl`, `mrldev`, `cloudEngineer`, `developer`. Confirm with
+     `dotnet --list-sdks`. Low risk; SDK 10 targets every installed runtime.
+  3. **Five new base-layer packages** — `GitHub.cli`, `Anthropic.Claude`, `OpenJS.NodeJS.LTS`,
+     `GoLang.Go`, `rsteube.Carapace`. Every role's `winget` phase got longer. Watch for
+     `0x8A150109` / `0x8A15010A` being folded into the single reboot rather than provoking a second.
+  4. **`posh-git` → `carapace`.** Needs *positive* confirmation in a fresh shell after setup:
+     `git chec` must complete to `checkout`. The `profile.ps1` guard means a blocked or missing
+     binary looks identical to a working one that silently does nothing — precisely the
+     probe-that-cannot-fail trap from G27. Also check the shell start cost is still ~100 ms and that
+     cmdlet/parameter/path completion is intact.
+  5. **`cloudEngineer` rebuilt as `mrl` + kubectl + minikube**, with `AWSPowerShell.NetCore` and four
+     base-layer duplicates dropped. Worth a second, cheaper run (no VS).
+
+  Known rough edges, already measured on `dev-cs-01`, not defects to chase:
+  - `kubectl get po` returns carapace's error marker (`poERR`, `po_`) until a cluster is configured,
+    which is the normal state on a freshly provisioned box.
+  - carapace is an **unsigned Go binary** that winget installs to a user-writable directory
+    (`%LOCALAPPDATA%\Microsoft\WinGet\Packages\…`). That is the class of executable a managed
+    endpoint can deny outright, so on a corporate-managed laptop expect no completion at all. The
+    `profile.ps1` guard exists so that degrades quietly instead of erroring on every shell start.
+  - winget adds that directory to the **user** PATH, so a shell started before setup finishes will
+    not see `carapace`. Verified on `dev-cs-01`: a fresh shell with the registry PATH re-read
+    resolves it correctly.
+
+  The VM, its clean snapshot and the `az vm run-command` driver are described under G7 and G32 above;
+  G32 notes `az vm user update` must reset `azureadmin` first, since autologon does not survive the
+  snapshot restore.
 
 ---
 
