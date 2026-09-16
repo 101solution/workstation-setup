@@ -21,6 +21,18 @@
       "source": "winget"
     },
     {
+      "id": "ajeetdsouza.zoxide",
+      "source": "winget"
+    },
+    {
+      "id": "junegunn.fzf",
+      "source": "winget"
+    },
+    {
+      "id": "jqlang.jq",
+      "source": "winget"
+    },
+    {
       "id": "Microsoft.VisualStudioCode",
       "override": "/mergetasks=addcontextmenufiles,addcontextmenufolders,!runcode /verysilent",
       "source": "winget"
@@ -60,6 +72,14 @@
     {
       "id": "GoLang.Go",
       "source": "winget"
+    },
+    {
+      "id": "Python.Python.3.14",
+      "source": "winget"
+    },
+    {
+      "id": "Python.Launcher",
+      "source": "winget"
     }
   ],
   "powershellModule": [
@@ -68,6 +88,9 @@
     },
     {
       "name": "PSRule"
+    },
+    {
+      "name": "powershell-yaml"
     }
   ]
 }

@@ -46,6 +46,10 @@
       "source": "winget"
     },
     {
+      "id": "Amazon.SessionManagerPlugin",
+      "source": "winget"
+    },
+    {
       "id": "dbeaver.dbeaver",
       "source": "winget"
     },
@@ -63,6 +67,10 @@
     },
     {
       "id": "Hashicorp.Terraform",
+      "source": "winget"
+    },
+    {
+      "id": "Terraform-docs.Terraform-docs",
       "source": "winget"
     },
     {

@@ -37,6 +37,11 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     if (Test-Path -LiteralPath $poshTheme) { oh-my-posh init pwsh --config $poshTheme | Invoke-Expression }
     else { oh-my-posh init pwsh | Invoke-Expression }
 }
+# Guarded like carapace: a machine without zoxide should still start a clean shell.
+if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    Invoke-Expression (& { (zoxide init powershell | Out-String) })
+}
+
 Import-Module PSReadLine
 
 # Shows navigable menu of all options when hitting Tab

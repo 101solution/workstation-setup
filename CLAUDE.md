@@ -20,7 +20,14 @@ passed the parser, JSON and unit checks.** Two of the worst were not install log
 success on retry, and one was a readiness check that started the very distro it was checking, so it
 could never fail. Static checks here tell you a change is syntactically sound, nothing more. Cheap local checks that are worth running before any push: parse
 every `.ps1` with `[System.Management.Automation.Language.Parser]::ParseFile`, `bash -n` the shell
-scripts, and `ConvertFrom-Json` every manifest.
+scripts, and `ConvertFrom-Json` every manifest. Two things about that parse check, both of which
+have produced false results here:
+- **Run it under pwsh 7, not 5.1.** Windows PowerShell reads a BOM-less UTF-8 file as ANSI, so a
+  single non-ASCII character (an em dash was enough) produces a phantom
+  *"The string is missing the terminator"* in a file that is perfectly valid.
+- **Print the number of files parsed.** A filter typo once excluded every file, so the check
+  reported a clean pass having parsed nothing. A pass with no count is indistinguishable from
+  a pass over an empty set.
 
 ## Entry Points
 

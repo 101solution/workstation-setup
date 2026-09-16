@@ -41,7 +41,8 @@ Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask
 
 Every role layers on the base packages from `packages-min.json`: PowerShell, Git, GitHub CLI,
 VS Code, Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, Claude Code, Claude desktop,
-Codex CLI, Node.js LTS, Go, Carapace, PSReadLine, PSRule. `min` is just that base.
+Codex CLI, Node.js LTS, Go, Python, Carapace, zoxide, fzf, jq, PSReadLine, PSRule,
+powershell-yaml. `min` is just that base.
 
 ## Manual Setup
 

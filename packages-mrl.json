@@ -5,6 +5,10 @@
       "source": "winget"
     },
     {
+      "id": "Terraform-docs.Terraform-docs",
+      "source": "winget"
+    },
+    {
       "id": "Microsoft.DotNet.SDK.10",
       "source": "winget"
     },
@@ -18,6 +22,10 @@
     },
     {
       "id": "Amazon.AWSCLI",
+      "source": "winget"
+    },
+    {
+      "id": "Amazon.SessionManagerPlugin",
       "source": "winget"
     },
     {
