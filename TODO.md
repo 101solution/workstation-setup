@@ -19,6 +19,12 @@ tag would reach nobody. It is now "Latest", so every new machine running the boo
 installs it. Previous release was `v2.3.2` from April. `v2.4.0` is **breaking**: `-role runner`,
 `-role ce-corp`, `-role ce-free`, `containers/` and `-installStax2AWS` are all gone.
 
+**State of the test rig (2026-09-16).** `vm-wstest-01` is **deallocated** (`Standard_D4s_v5`), so
+compute cost is zero. The two superseded OS disks were deleted today, leaving only the live
+`vm-wstest-01-osdisk-202609141511`; storage cost is now one disk. The clean snapshot
+`snap-vm-wstest-01-clean-20260911` is intact and is what G36 restores from — remember
+`az vm user update` to reset `azureadmin` first, since autologon does not survive a restore.
+
 **Live gate: G36.** Commit `f3aeba9` (2026-09-16) refreshed every role manifest — .NET SDK 10,
 VS Enterprise 2026, five new base-layer packages, `posh-git` replaced by `carapace` — and none of
 it has run on a real machine. Push `main` freely; **do not cut a release until the `-role mrldev`
@@ -122,11 +128,6 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
   The VM, its clean snapshot and the `az vm run-command` driver are described under G7 and G32 above;
   G32 notes `az vm user update` must reset `azureadmin` first, since autologon does not survive the
   snapshot restore.
-
-- [ ] **Two superseded test-VM OS disks are unattached and pure cost.**
-  `vm-wstest-01-osdisk-202609131329` (runs 5b/6) and `vm-wstest-01-osdisk-202609140303` (run 7),
-  in `S101-ARG-WSTEST-MRL`. Their evidence has served its purpose now `v2.4.0` is cut. Delete with
-  `az disk delete --subscription $sub -g $rg -n <name> --yes`. Carried over from G32.
 
 ---
 
