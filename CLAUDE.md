@@ -124,6 +124,11 @@ were initially missed by checks that could not fail:
   bare `docker` was broken (G27). Anything that measures WSL must use `wsl -l -v`,
   `wsl -l --running` or `netstat`, none of which start a distro, and must run **before** anything
   that does.
+- **Check that the consumer accepted the artefact, not that the artefact exists.** Run 11 verified
+  the oh-my-posh theme file was present and concluded the theme worked. It did not: every deployed
+  theme since the beginning carried a UTF-8 BOM and oh-my-posh refused to parse it. `Test-Path` on
+  a file another program has to read proves nothing - run that program against it
+  (`oh-my-posh print primary --config <file>`) and check for an error.
 - **An idempotency guard must check the end state, not a proxy.** Gating the Windows install on
   \"is the service registered\" let a part-failed install report success on retry, because the
   service is created several steps before `daemon.json` and the `win` context (G25).
@@ -174,7 +179,9 @@ in the 2026-09 cleanup; `Install-Stax2AWS-CLI`, the runner-only `Install-DockerE
 `Update-EnvironmentPath`, and the long-dead `New-/Remove-WindowsTask` pair were removed on request
 the same month. Everything left is reachable.
 
-Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Update-SessionEnvironment`,
+Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Install-OhMyPoshStandalone`,
+`Save-Utf8NoBom`,
+`Update-SessionEnvironment`,
 `Format-Json` (pretty-prints Windows Terminal settings), and `Install-WinGet` (fallback when winget
 cannot be resolved at all). **Never call `winget` or `wt` bare**: on a
 freshly created user profile the machine-wide Store package exists but the per-user alias in
@@ -211,7 +218,21 @@ be preserved when editing the source file:
   substitution as the theme, because `profile.ps1` force-overrides `$HOME` and the FileSystem
   provider home to the work folder. Keep that token if you edit the profile.
 - `rudolfs-light-cs.omp.json` → `$env:POSH_THEMES_PATH`, with the literal token `#workFolder#`
-  substituted for `-defaultWorkFolder`. Keep that token if you edit the theme.
+  substituted for `-defaultWorkFolder`. Keep that token if you edit the theme. The MSIX build never
+  sets `POSH_THEMES_PATH`, so both this copy and `profile.ps1` fall back to
+  `%LOCALAPPDATA%\Programs\oh-my-posh	hemes`; they must agree, or the theme lands somewhere nothing
+  reads (it silently went to the drive root for ten months on one machine). **Write it with
+  `Save-Utf8NoBom`, never `Out-File -Encoding utf8`**: under Windows PowerShell 5.1 that emits a
+  BOM, and oh-my-posh is a Go program that rejects a JSON config starting with one - the prompt
+  shows `CONFIG PARSE ERROR` and falls back to a default. The same applies to the Windows Terminal
+  `settings.json` write. A BOM in a `.ps1` is fine, and on 5.1 it is actively useful, so
+  `profile.ps1` is still written with `Out-File`.
+- **On Windows Server only**, `Install-OhMyPoshStandalone` downloads `posh-windows-amd64.exe` to
+  `%LOCALAPPDATA%\Programs\oh-my-poshin`, at the version of the installed MSIX. Server cannot use
+  the MSIX for a prompt: every activation of `ohmyposh.cli` first spawns
+  `Microsoft.DesktopAppInstaller!winget` and blocks 10-17 s on it, with the App Installer dialog on
+  screen, and oh-my-posh runs its exe on *every prompt render*. The same binary outside the package
+  runs in ~15-70 ms. Client SKUs are unaffected (57-88 ms) and keep the winget-managed MSIX.
 - `terminal-default-settings.json` → merged into Windows Terminal's `settings.json` as
   `profiles.defaults`, with `startingDirectory` overwritten by `-defaultWorkFolder`. If
   `settings.json` doesn't exist yet, the script launches and kills `wt.exe` to force its creation.

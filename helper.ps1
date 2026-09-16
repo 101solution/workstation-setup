@@ -247,6 +247,85 @@ Function Install-PSModule {
         }
     }
 }
+
+Function Save-Utf8NoBom {
+    <#
+        .SYNOPSIS
+            Writes text as UTF-8 with no byte-order mark.
+        .DESCRIPTION
+            These scripts run under Windows PowerShell 5.1, where `Out-File -Encoding utf8` emits a
+            BOM. PowerShell tolerates that in a .ps1, but a BOM is not valid at the start of a JSON
+            document: oh-my-posh (Go) rejects a themed config with "CONFIG PARSE ERROR", so the
+            custom prompt silently fell back to a default. Use this for anything another program
+            has to parse.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $Content
+    )
+    [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+Function Install-OhMyPoshStandalone {
+    <#
+        .SYNOPSIS
+            Places a plain oh-my-posh.exe where profile.ps1 prefers it, on Windows Server only.
+        .DESCRIPTION
+            winget (and oh-my-posh's own install.ps1, which calls Add-AppxPackage) only ever deliver
+            an MSIX package. On Windows Server that is unusable for a prompt: every activation of
+            ohmyposh.cli first spawns Microsoft.DesktopAppInstaller!winget and blocks on it for
+            10-17 seconds, with the App Installer dialog on screen - and oh-my-posh runs its exe on
+            every prompt render. The same binary outside the package runs in ~15 ms. Measured on
+            Server 2025 (slow) and Windows 11 24H2 (57-88 ms, no dialog), which is why this is
+            gated on the SKU rather than applied everywhere.
+
+            The version is taken from the installed MSIX so the two cannot drift, rather than
+            tracking 'latest'. Never throws: without the plain exe the prompt still works through
+            the package, just slowly.
+    #>
+    [CmdletBinding()]
+    param (
+        [string] $BinDir = (Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin')
+    )
+    if (Test-WindowsClientSku) {
+        Write-SetupLog "Client SKU: MSIX oh-my-posh activation is fast here, no standalone exe needed."
+        return
+    }
+
+    $package = Get-AppxPackage -Name 'ohmyposh.cli' -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending | Select-Object -First 1
+    if (-not $package) {
+        Write-Warning "  oh-my-posh MSIX package not found; skipping the standalone exe."
+        return
+    }
+    # MSIX versions are four-part (31.3.0.0); the release tag is three (v31.3.0).
+    $wanted = ($package.Version -split '\.')[0..2] -join '.'
+    $exePath = Join-Path $BinDir 'oh-my-posh.exe'
+
+    if (Test-Path -LiteralPath $exePath) {
+        $have = (Get-Item -LiteralPath $exePath).VersionInfo.FileVersion
+        if ($have -and $have.StartsWith($wanted)) {
+            Write-SetupLog "  Standalone oh-my-posh $have is already present."
+            return
+        }
+        Write-SetupLog "  Standalone oh-my-posh is $have, package is $wanted; refreshing."
+    }
+
+    $uri = "https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v$wanted/posh-windows-amd64.exe"
+    Write-SetupLog "Server SKU: downloading standalone oh-my-posh $wanted (MSIX activation is too slow for a prompt)"
+    try {
+        if (-not (Test-Path -LiteralPath $BinDir)) { New-Item -Path $BinDir -ItemType Directory -Force | Out-Null }
+        $tmp = "$exePath.download"
+        Invoke-WebRequest -Uri $uri -OutFile $tmp -UseBasicParsing
+        Move-Item -LiteralPath $tmp -Destination $exePath -Force
+        Write-SetupLog "  Standalone oh-my-posh at $exePath"
+    }
+    catch {
+        Write-Warning "  Could not install the standalone oh-my-posh ($($_.Exception.Message)). The prompt will fall back to the MSIX package, which is slow on Server."
+    }
+}
+
 Function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
     $indent = 0;
     ($json -Split "`n" | ForEach-Object {

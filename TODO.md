@@ -82,6 +82,46 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
+- [ ] **G38. The deployed oh-my-posh theme carried a UTF-8 BOM and was never parsed. FIXED, needs a run.**
+  `config-workstation.ps1` wrote the theme with `Out-File -Encoding utf8` under Windows PowerShell
+  5.1, which emits a BOM; oh-my-posh is a Go program and rejects JSON starting with one, showing
+  `CONFIG PARSE ERROR` and falling back to a default theme. Affects **every machine and every SKU**,
+  and has done since the theme copy was written - client machines too, not just Server.
+  Found 2026-09-16 on a Server 2025 box, only because the standalone exe made the prompt fast
+  enough to read the error.
+
+  Fixed by `Save-Utf8NoBom` (helper.ps1), used for both the theme and the Windows Terminal
+  `settings.json`. Verified under 5.1: first bytes `7B 0D 0A`, `ConvertFrom-Json` accepts it,
+  `oh-my-posh print primary --config` parses it, `#workFolder#` substituted. `profile.ps1` keeps
+  `Out-File` - a BOM is fine in a `.ps1` and helps 5.1 decode non-ASCII.
+
+  **Why run 11 missed it:** it asserted `Test-Path` on the theme file rather than asking oh-my-posh
+  whether it could read it. Recorded in CLAUDE.md as its own measurement trap.
+
+- [ ] **G37. Validate the Server-SKU oh-my-posh fix on both SKUs before `v2.5.1`.**
+  `Install-OhMyPoshStandalone` (helper.ps1) downloads a plain `oh-my-posh.exe` on Windows Server,
+  because MSIX activation of `ohmyposh.cli` there spawns `Microsoft.DesktopAppInstaller!winget` and
+  blocks 10-17 s per invocation - on every prompt render. Found on 2026-09-16 when `v2.5.0` was run
+  on a fresh **Windows Server 2025** box, the first time this repo had been tried on a Server SKU.
+
+  All three branches of the helper are verified on a real Server 2025 machine (already-present
+  no-op, download at the MSIX's version, idempotent re-run; 71 ms against ~13,000 ms). What is
+  **not** verified:
+  - The **client-SKU early return**. It is a one-line `if (Test-WindowsClientSku) { return }`, but no
+    run has exercised it, and client machines must keep the winget-managed MSIX untouched.
+  - A full clean-VM run on either SKU with the helper in the `shell` phase.
+
+  So the gate for `v2.5.1` is two runs: one Windows 11 client (confirm the MSIX is left alone and
+  the prompt is still ~137 ms) and one Server 2025 (confirm the download happens, no App Installer
+  dialog, and a fast prompt in a fresh shell).
+
+  **Add Server 2025 to the validation matrix permanently.** Runs 1-11 were all client SKU, and the
+  first Server run immediately found two real issues: this one, and `Bruno.Bruno` failing with
+  `0x8A150006` / installer exit `3221225477` (0xC0000005, an access violation in Bruno's own
+  installer). The Bruno failure is non-fatal - `Install-WinGetPackage` logs a warning and the phase
+  continues - but it means `mrl` on Server does not get Bruno. Worth deciding whether that is
+  acceptable or whether Bruno should be dropped from Server-bound roles.
+
 - [x] **G36. Validate the 2026-09-16 manifest refresh on a clean VM before cutting a release.**
   **DONE 2026-09-16 by run 11** (role `mrldev`, 9 phases, one reboot, 33 minutes): VS 2026 with
   both workloads confirmed via `vswhere`, SDK 10.0.401, 0 profile load errors, carapace

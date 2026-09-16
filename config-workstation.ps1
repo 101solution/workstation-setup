@@ -225,6 +225,12 @@ Invoke-SetupPhase -Phase 'shell' -Body {
         New-Item -Path $defaultWorkFolder -ItemType Directory -Force | Out-Null
     }
 
+    # Only when the role actually asks for oh-my-posh: a machine that does not install it should
+    # not download a standalone copy, nor be warned about a package it never wanted.
+    $poshConfigured = @(($packageConfigBase.winget + $packageConfig.winget) |
+        Where-Object { $_.id -eq 'JanDeDobbeleer.OhMyPosh' }).Count -gt 0
+    if ($poshConfigured) { Install-OhMyPoshStandalone }
+
     Write-SetupLog "Copy oh-my-posh theme"
     # POSH_THEMES_PATH is a user env var written by the Oh My Posh installer; the session may not
     # have it yet, and without this guard the theme would be written to the drive root.
@@ -237,7 +243,9 @@ Invoke-SetupPhase -Phase 'shell' -Body {
         New-Item -Path $poshThemesPath -ItemType Directory -Force | Out-Null
     }
     $poshContent = Get-Content "$PSScriptRoot/rudolfs-light-cs.omp.json" -Encoding UTF8
-    $poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder) | Out-File -LiteralPath "$poshThemesPath\rudolfs-light-cs.omp.json" -Encoding utf8 -Force
+    # BOM-less: oh-my-posh is a Go program and rejects a JSON config that starts with one.
+    $poshJson = ($poshContent -replace "#workFolder#", [regex]::escape($defaultWorkFolder)) -join [Environment]::NewLine
+    Save-Utf8NoBom -Path "$poshThemesPath\rudolfs-light-cs.omp.json" -Content $poshJson
 
     Write-SetupLog "Copy git config..."
     Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
@@ -293,7 +301,8 @@ Invoke-SetupPhase -Phase 'terminal' -Body {
     foreach ($property in $defaultSettings.PSObject.Properties) {
         $terminalSettings.profiles.defaults | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
     }
-    $terminalSettings | ConvertTo-Json -Depth 10 | Format-Json | Out-File $terminalSettingFile -Force -Encoding utf8
+    $terminalJson = $terminalSettings | ConvertTo-Json -Depth 10 | Format-Json
+    Save-Utf8NoBom -Path $terminalSettingFile -Content $terminalJson
 }
 
 # ---------------------------------------------------------------------------------------------
