@@ -1,0 +1,1 @@
+- [Avoid scheduled tasks](avoid-scheduled-tasks-preference.md) — lead with task-free resume options; elevated auto-resume has a hard constraint
