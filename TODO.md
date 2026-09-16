@@ -86,8 +86,7 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
   Found 2026-09-16 on Server 2025 during the `v2.5.0` run: `winget exited with 0x8A150006`, installer
   exit `3221225477`. WER names the faulting module as NSIS's own `System.dll`
   (`0xc0000005`, offset `0x00001581`, module timestamp `0x5c157efa`) loaded from
-  `...\Temp
-soC7ED.tmp\System.dll` - the copy that run had just extracted, so not a stale file.
+  `%TEMP%\nsoC7ED.tmp\System.dll` - the copy that run had just extracted, so not a stale file.
 
   **It is the path, not the SKU.** winget stages installers under `%TEMP%`, inside the user profile.
   The account `chuanhui.shen` gets the 8.3 short name `CHUANH~1.SHE`, and the identical installer

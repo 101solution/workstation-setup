@@ -228,7 +228,7 @@ be preserved when editing the source file:
   `settings.json` write. A BOM in a `.ps1` is fine, and on 5.1 it is actively useful, so
   `profile.ps1` is still written with `Out-File`.
 - **On Windows Server only**, `Install-OhMyPoshStandalone` downloads `posh-windows-amd64.exe` to
-  `%LOCALAPPDATA%\Programs\oh-my-poshin`, at the version of the installed MSIX. Server cannot use
+  `%LOCALAPPDATA%\Programs\oh-my-posh\bin`, at the version of the installed MSIX. Server cannot use
   the MSIX for a prompt: every activation of `ohmyposh.cli` first spawns
   `Microsoft.DesktopAppInstaller!winget` and blocks 10-17 s on it, with the App Installer dialog on
   screen, and oh-my-posh runs its exe on *every prompt render*. The same binary outside the package
