@@ -173,13 +173,35 @@ Invoke-SetupPhase -Phase 'winget' -Body {
         throw "winget is unavailable in this session, so no packages can be installed. Every later phase that needs an installed tool (pwsh, git, oh-my-posh, Windows Terminal) will fail too."
     }
     Write-SetupLog "Using winget at $winget"
-    foreach ($pack in $wingetPackages) {
-        if ($pack.override) {
-            Install-WinGetPackage -packageId $pack.id -overrideParameters $pack.override -source $pack.source
+
+    # winget stages downloaded installers under %TEMP%, i.e. inside the user profile. An account
+    # named first.last gets an 8.3 short name like CHUANH~1.SHE, and some NSIS installers crash
+    # when run from such a path: Bruno 4.1.0 dies with 0xC0000005 in its own System.dll plugin,
+    # while the identical installer run from C:\temp succeeds. Stage on a short, dotless path for
+    # the duration of this phase instead, and always put the original values back.
+    $originalTemp = $env:TEMP
+    $originalTmp = $env:TMP
+    $stagingTemp = Join-Path $env:SystemRoot 'Temp\workstation-setup'
+    try {
+        if (-not (Test-Path -LiteralPath $stagingTemp)) {
+            New-Item -Path $stagingTemp -ItemType Directory -Force | Out-Null
         }
-        else {
-            Install-WinGetPackage -packageId $pack.id -source $pack.source
+        $env:TEMP = $stagingTemp
+        $env:TMP = $stagingTemp
+        Write-SetupLog "Staging installers in $stagingTemp (a profile short name containing '~' or '.' breaks some NSIS installers)"
+
+        foreach ($pack in $wingetPackages) {
+            if ($pack.override) {
+                Install-WinGetPackage -packageId $pack.id -overrideParameters $pack.override -source $pack.source
+            }
+            else {
+                Install-WinGetPackage -packageId $pack.id -source $pack.source
+            }
         }
+    }
+    finally {
+        $env:TEMP = $originalTemp
+        $env:TMP = $originalTmp
     }
 }
 

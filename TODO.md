@@ -82,6 +82,31 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
+- [ ] **G39. `Bruno.Bruno` 4.1.0 crashes when winget stages it under a dotted username. MITIGATED.**
+  Found 2026-09-16 on Server 2025 during the `v2.5.0` run: `winget exited with 0x8A150006`, installer
+  exit `3221225477`. WER names the faulting module as NSIS's own `System.dll`
+  (`0xc0000005`, offset `0x00001581`, module timestamp `0x5c157efa`) loaded from
+  `...\Temp
+soC7ED.tmp\System.dll` - the copy that run had just extracted, so not a stale file.
+
+  **It is the path, not the SKU.** winget stages installers under `%TEMP%`, inside the user profile.
+  The account `chuanhui.shen` gets the 8.3 short name `CHUANH~1.SHE`, and the identical installer
+  that crashes from there succeeds when copied to `C:	emp`. `dev-cs-01` was unaffected because its
+  account is `cshen`. Bruno 3.4.2 installs fine from either path, so it is a 4.x regression.
+  The WER signature matches upstream usebruno/bruno#3404 exactly (closed as no longer reproducing,
+  and all its reports were Windows 11, not Server).
+
+  Mitigated in the `winget` phase by staging installers in `%SystemRoot%\Temp\workstation-setup`
+  for the duration of the phase and restoring `TEMP`/`TMP` in a `finally`. This addresses the class
+  - any NSIS installer with the same path sensitivity - rather than Bruno alone. Verified under
+  Windows PowerShell 5.1 that the swap applies, the directory is writable, and the original values
+  are restored even when the phase throws.
+
+  **Not yet validated by a run.** This changes the environment for *every* installer in the phase,
+  so the two-SKU run under G37 must confirm the whole `mrldev` package set still installs, and that
+  Bruno specifically now succeeds on a dotted-username account. Worth reporting upstream with the
+  WER data, since #3404 was closed without this path-dependent repro.
+
 - [ ] **G38. The deployed oh-my-posh theme carried a UTF-8 BOM and was never parsed. FIXED, needs a run.**
   `config-workstation.ps1` wrote the theme with `Out-File -Encoding utf8` under Windows PowerShell
   5.1, which emits a BOM; oh-my-posh is a Go program and rejects JSON starting with one, showing
