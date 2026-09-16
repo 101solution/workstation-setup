@@ -119,7 +119,10 @@ daemon answers on 2378, and the WSL2 Linux daemon reports `os=linux` on 2375 and
 
 ## Terminal
 
-The script configures Oh My Posh and PSReadLine, inspired by:
+The script configures Oh My Posh for the prompt, PSReadLine for command-line editing (menu
+completion on Tab, history search on the arrow keys, inline prediction), and Carapace for
+completion of external commands - `git`, `terraform`, `az`, `kubectl`, `gh` and others, which
+PowerShell cannot complete on its own. Prompt and editing setup are inspired by:
 - [My Ultimate PowerShell prompt with Oh My Posh and the Windows Terminal](https://www.hanselman.com/blog/my-ultimate-powershell-prompt-with-oh-my-posh-and-the-windows-terminal)
 - [You should be customizing your PowerShell Prompt with PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
 
