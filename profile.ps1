@@ -13,10 +13,17 @@ if (Get-Command carapace -ErrorAction SilentlyContinue) {
 # system" and pops a modal App Installer dialog. Putting the package folder first on PATH makes the
 # bare name resolve to the real exe. Passing a full path to `init` is not enough - the generated
 # script hardcodes the bare name.
-$ompPkg = Get-AppxPackage -Name 'ohmyposh.cli' -ErrorAction SilentlyContinue |
-    Sort-Object Version -Descending | Select-Object -First 1
-if ($ompPkg -and (Test-Path -LiteralPath (Join-Path $ompPkg.InstallLocation 'oh-my-posh.exe'))) {
-    $env:PATH = "$($ompPkg.InstallLocation);$env:PATH"
+# A plain exe is preferred where one exists: some machines take 10+ seconds per MSIX activation,
+# and oh-my-posh runs the exe on every prompt render.
+$ompBin = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin'
+if (Test-Path -LiteralPath (Join-Path $ompBin 'oh-my-posh.exe')) {
+    $env:PATH = "$ompBin;$env:PATH"
+} else {
+    $ompPkg = Get-AppxPackage -Name 'ohmyposh.cli' -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending | Select-Object -First 1
+    if ($ompPkg -and (Test-Path -LiteralPath (Join-Path $ompPkg.InstallLocation 'oh-my-posh.exe'))) {
+        $env:PATH = "$($ompPkg.InstallLocation);$env:PATH"
+    }
 }
 # The MSIX build never sets POSH_THEMES_PATH, so mirror the fallback config-workstation.ps1 used
 # when it deployed the theme. Without this the config path resolves to the drive root and the
