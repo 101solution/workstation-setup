@@ -38,6 +38,8 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     else { oh-my-posh init pwsh | Invoke-Expression }
 }
 # Guarded like carapace: a machine without zoxide should still start a clean shell.
+# Must stay *after* the oh-my-posh init: zoxide hooks directory tracking by wrapping whatever
+# `prompt` is defined at that moment, so initialising it first means oh-my-posh overwrites the hook.
 if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }

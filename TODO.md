@@ -30,7 +30,7 @@ compute cost is zero. The two superseded OS disks were deleted today, leaving on
 `snap-vm-wstest-01-clean-20260911` is intact and is what G36 restores from — remember
 `az vm user update` to reset `azureadmin` first, since autologon does not survive a restore.
 
-**Live gate: G37, G38 and G39, folded into one two-SKU run before `v2.5.1`.** `v2.5.0` was
+**Live gate: none.** G37, G38 and G39 all passed on 2026-09-16 (runs 13/14, one client and one Server), so `v2.5.1` can be cut. `v2.5.0` was
 published on 2026-09-16 and is Latest; three fixes have landed on `main` since and none of them has
 had a full run.
 Commit `f3aeba9` (2026-09-16) refreshed every role manifest — .NET SDK 10,
@@ -89,7 +89,8 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
-- [ ] **G39. `Bruno.Bruno` 4.1.0 crashes when winget stages it under a dotted username. MITIGATED.**
+- [x] **G39. DONE 2026-09-16 by runs 13/14** - Bruno 4.1.0 installed on a deliberately dotted account, `test.user`. Original entry below.
+  **G39. `Bruno.Bruno` 4.1.0 crashes when winget stages it under a dotted username. MITIGATED.**
   Found 2026-09-16 on Server 2025 during the `v2.5.0` run: `winget exited with 0x8A150006`, installer
   exit `3221225477`. WER names the faulting module as NSIS's own `System.dll`
   (`0xc0000005`, offset `0x00001581`, module timestamp `0x5c157efa`) loaded from
@@ -113,7 +114,8 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
   Bruno specifically now succeeds on a dotted-username account. Worth reporting upstream with the
   WER data, since #3404 was closed without this path-dependent repro.
 
-- [ ] **G38. The deployed oh-my-posh theme carried a UTF-8 BOM and was never parsed. FIXED, needs a run.**
+- [x] **G38. DONE 2026-09-16 by runs 13/14** - the theme now parses on both SKUs, checked with `oh-my-posh print primary --config`. Original entry below.
+  **G38. The deployed oh-my-posh theme carried a UTF-8 BOM and was never parsed. FIXED, needs a run.**
   `config-workstation.ps1` wrote the theme with `Out-File -Encoding utf8` under Windows PowerShell
   5.1, which emits a BOM; oh-my-posh is a Go program and rejects JSON starting with one, showing
   `CONFIG PARSE ERROR` and falling back to a default theme. Affects **every machine and every SKU**,
@@ -129,7 +131,8 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
   **Why run 11 missed it:** it asserted `Test-Path` on the theme file rather than asking oh-my-posh
   whether it could read it. Recorded in CLAUDE.md as its own measurement trap.
 
-- [ ] **G37. Validate the Server-SKU oh-my-posh fix on both SKUs before `v2.5.1`.**
+- [x] **G37. DONE 2026-09-16 by runs 13/14** - the client early-return kept the MSIX untouched and Server got the standalone exe (31 ms). Original entry below.
+  **G37. Validate the Server-SKU oh-my-posh fix on both SKUs before `v2.5.1`.**
   `Install-OhMyPoshStandalone` (helper.ps1) downloads a plain `oh-my-posh.exe` on Windows Server,
   because MSIX activation of `ohmyposh.cli` there spawns `Microsoft.DesktopAppInstaller!winget` and
   blocks 10-17 s per invocation - on every prompt render. Found on 2026-09-16 when `v2.5.0` was run

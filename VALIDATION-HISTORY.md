@@ -297,6 +297,37 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Closed items from "Remaining"
 
+- [x] **RUNS 13 and 14 (2026-09-16): the `v2.5.1` gate, on both SKUs in parallel. PASSED.**
+  Two VMs driven together: `vm-wstest-01` (Windows 11 Enterprise 24H2, account `azureadmin`,
+  restored from the clean snapshot) and a purpose-built `vm-wstest-02` (**Windows Server 2025**,
+  account **`test.user`** - deliberately dotted, so the Bruno fix was exercised rather than assumed).
+  9 phases and one reboot each, ~19 and ~18 minutes. A second `-force` pass on both took ~6 minutes
+  with `rebootCount` 0, correctly, because the WSL features were already enabled.
+
+  | check | client | Server |
+  |---|---|---|
+  | oh-my-posh resolves to | MSIX package | standalone exe |
+  | one invocation | 74 ms | **31 ms** (was 13,000 ms) |
+  | theme first bytes | `7B 0D 0A` | `7B 0D 0A` |
+  | theme **parses** | YES | YES |
+  | profile load errors | 0 | 0 |
+  | Bruno 4.1.0 | installed | **installed on a dotted account** |
+  | winget warnings | **0** | **0** |
+
+  G37's client early-return is what the left column proves: the client kept the winget-managed MSIX
+  and downloaded nothing. G38 was checked by asking oh-my-posh to *parse* the theme
+  (`print primary --config`), not by `Test-Path` - the omission that let the BOM ship. G39 is proven
+  on the failure case rather than a passing one.
+
+  The `-force` pass also covered the packages added the same day: zoxide, fzf, jq, Python 3.14 plus
+  launcher, terraform-docs, the AWS Session Manager plugin and `powershell-yaml` all resolve on both
+  machines, with no new winget warnings.
+
+  **Two of my own probes were wrong before the product was.** A check for
+  `...\Microsoft Visual Studio\2026` reported VS missing when it installs under `\18\`, and a check
+  formatting `Get-Command z` via `Split-Path $_.Source` printed a blank for `z` because aliases have
+  no `Source`. Both looked like product failures. Verify the probe before believing a negative.
+
 - [x] **RUN 12 (2026-09-16): `v2.5.0` on Windows Server 2025, workstation + Docker. PASSED, with
   three bugs found.** The first time this repo had ever been run on a Server SKU; runs 1-11 were all
   Windows 10/11. Driven by the user on their own VM, not the test rig.
@@ -316,7 +347,7 @@ Design is documented in the "Unattended execution and reboot resume" section of 
      57-88 ms on Windows 11, because each activation spawns
      `Microsoft.DesktopAppInstaller!winget` first.
   3. **`Bruno.Bruno` 4.1.0 crashes when staged under a dotted username** - the 8.3 short name
-     `CHUANH~1.SHE` breaks its NSIS `System.dll`; the same installer works from `C:	emp`.
+     `CHUANH~1.SHE` breaks its NSIS `System.dll`; the same installer works from `C:\temp`.
 
   The lesson worth keeping: one run on a SKU nobody had tried found three real defects, one of which
   had been shipping silently since the theme copy was written. **Server 2025 belongs in the
