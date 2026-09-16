@@ -114,7 +114,7 @@ wsl -d Ubuntu -- /bin/true
 docker run hello-world
 ```
 
-Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `TODO.md`): the Windows
+Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `VALIDATION-HISTORY.md`): the Windows
 daemon answers on 2378, and the WSL2 Linux daemon reports `os=linux` on 2375 and runs containers.
 
 ## Terminal

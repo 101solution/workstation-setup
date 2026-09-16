@@ -8,15 +8,15 @@ Automates Windows workstation setup and Docker-without-Docker-Desktop configurat
 role-based JSON package manifests installed via WinGet and PSGallery.
 
 There is no build, lint, or test. Every change is validated by running the script as Administrator
-on a real (preferably throwaway) Windows machine and reading the transcript log. `TODO.md` is the
-record of what has and has not been validated that way. As of **2026-09-14 (run 7, released as
-v2.4.0)** both entry points have passed end to end from a clean Azure Windows 11 Enterprise 24H2
+on a real (preferably throwaway) Windows machine and reading the transcript log. `TODO.md` holds
+open work; `VALIDATION-HISTORY.md` is the record of what has and has not been validated that way.
+As of **2026-09-14 (run 7, released as v2.4.0)** both entry points have passed end to end from a clean Azure Windows 11 Enterprise 24H2
 snapshot: `config-workstation.ps1 -role mrl` in 9 phases and one reboot, then
 `docker-ce/config-docker.ps1` in 6 phases and one reboot, with both daemons verified. The throwaway
 VM, its clean snapshot and the `az vm run-command` driver scripts are described under G7 in
-`TODO.md`. **Treat that history as the main lesson of this repo: nine bugs (G23-G31) were found only
-by running it on a real machine, and every one of them had already passed the parser, JSON and unit
-checks.** Two of the worst were not install logic at all - one let a part-failed install record
+`VALIDATION-HISTORY.md`. **Treat that history as the main lesson of this repo: nine bugs
+(G23-G31) were found only by running it on a real machine, and every one of them had already
+passed the parser, JSON and unit checks.** Two of the worst were not install logic at all - one let a part-failed install record
 success on retry, and one was a readiness check that started the very distro it was checking, so it
 could never fail. Static checks here tell you a change is syntactically sound, nothing more. Cheap local checks that are worth running before any push: parse
 every `.ps1` with `[System.Management.Automation.Language.Parser]::ParseFile`, `bash -n` the shell
@@ -114,9 +114,10 @@ of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (req
 
 ## Verifying on a real machine
 
-`TODO.md` holds the VM details and run history. What matters here is *how to measure*, because
-nine bugs (G23-G31) plus G35 were found only by running this on real hardware, and several were
-initially missed by checks that could not fail:
+`TODO.md` holds the VM details and the open validation gate; `VALIDATION-HISTORY.md` holds the run
+history and uses the G-numbers cited throughout this file. What matters here is *how to measure*,
+because nine bugs (G23-G31) plus G35 were found only by running this on real hardware, and several
+were initially missed by checks that could not fail:
 
 - **A probe must not create the state it is checking.** The original `docker-linux` readiness
   check ran `wsl -- docker version`, which *starts the distro* - so it passed on a machine where
@@ -256,7 +257,7 @@ design:
   `127.0.0.1:2375` from Windows, via `Start-WslDistro`/`Test-TcpPort`, throwing if it never answers.
   It must not go back to `wsl -- docker version`: that probes the unix socket *inside* the distro
   **and starts the distro**, so it cannot fail — it reported success on a run where bare `docker`
-  was broken (TODO G27). The shell script is written to be re-runnable: the `sed` adding
+  was broken (G27). The shell script is written to be re-runnable: the `sed` adding
   `-H tcp://127.0.0.1:2375` is `grep`-guarded, or a second run would append a duplicate `-H`.
 - `.gitattributes` pins `*.sh` to LF. Without it a Windows clone with `core.autocrlf=true` checks
   them out CRLF and bash fails on every line.
@@ -268,12 +269,12 @@ design:
 `Install-WindowsDocker` copies `daemon.json` from `$PSScriptRoot`, so it works from a git clone as
 well as from a `get-latestPackages.ps1` deploy, and it creates `%ProgramData%\docker\config\`
 itself: `dockerd` 20.10 created that directory on first run but 29.x does not, which is what broke
-the copy on the first real run (TODO G23). It appends `C:\docker` to the **machine** `Path` read
+the copy on the first real run (G23). It appends `C:\docker` to the **machine** `Path` read
 from the machine scope — never `$env:Path`, which is Machine and User merged and would bake the
-running user's private directories into the machine `Path` (TODO G24). And it is idempotent piece by
+running user's private directories into the machine `Path` (G24). And it is idempotent piece by
 piece rather than gated on "is the service registered", because the service is created several steps
 before `daemon.json` and the `win` context, so one up-front check let a part-failed install look
-complete on retry (TODO G25).
+complete on retry (G25).
 
 ## Distribution
 
