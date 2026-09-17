@@ -1,7 +1,7 @@
 # Repo Fix Backlog
 
 Open work only. Closed items — the 2026-09-11 audit (1-22) and the unattended-setup goal
-(G1-G39, including the nine real-machine bugs G23-G31) — are in
+(G1-G40, including the nine real-machine bugs G23-G31) — are in
 [`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md), with their numbering intact.
 
 ## Handover — start here (updated 2026-09-17)
@@ -26,26 +26,34 @@ same day with the manifest refresh. The last breaking release was **`v2.4.0`**: 
 and found three bugs (G37, G38, G39), one of which had been silently broken on every machine since
 the theme copy was written. Validate on **one client and one Server** box from now on.
 
-**The test rig is gone (decommissioned 2026-09-17, on request).** The whole resource group
-`S101-ARG-WSTEST-MRL` was deleted — `vm-wstest-01` (client), `vm-wstest-02` (Server 2025), both
-Premium OS disks, the network shell, the auto-shutdown schedule **and the clean snapshot
-`snap-vm-wstest-01-clean-20260911`**. Cost is now zero and the two cleartext autologon passwords
-went with the disks. The snapshot loss was called out before the delete and accepted, so it was
-deliberate.
+**State of the test rig (2026-09-17).** Deleted this morning on request, then **rebuilt the same
+day** to validate G40. Resource group `S101-ARG-WSTEST-MRL` in VS_Sub_MRL again holds:
 
-**So the next release's validation starts by rebuilding the rig.** Budget for that: create two VMs
-in a fresh RG in VS_Sub_MRL (one Windows 11 client, one Server 2025 — the matrix is two SKUs now),
-from Azure stock images rather than a snapshot. `logs/vm-bootstrap.ps1` still does the per-VM work
-(download `main` as a zip, set autologon, register the at-logon task), and the Server box needs a
-**dotted** admin username, e.g. `test.user`, or G39's staging fix is never exercised. Take a clean
-snapshot of each *before* the first run this time, so the baseline survives.
+| VM | SKU | Admin | Why that admin |
+|---|---|---|---|
+| `vm-wstest-01` | Windows 11 Enterprise 24H2 | `azureadmin` | client half of the matrix |
+| `vm-wstest-02` | Windows Server 2025 | **`test.user`** | the dot is deliberate - it reproduces the 8.3 short name that breaks NSIS installers, so G39's staging fix stays exercised |
 
-**Live gate: G40** — the release-version gate added 2026-09-17, which changes when phases re-run and
-has had no run on a real machine. Push `main` freely; **do not publish a release until G40 passes**,
-because publishing is what exposes machines. Everything before it is closed: G36-G39 by runs 11, 13
-and 14 (which also covered the packages added the same day - zoxide, fzf, jq, Python 3.14,
-terraform-docs, the AWS Session Manager plugin, `powershell-yaml`), and run 11 validated the
-manifest refresh of commit `f3aeba9` on `mrldev`. `v2.5.1` remains Latest and is fully validated.
+**Both have a clean snapshot this time** - `snap-vm-wstest-0{1,2}-clean-20260917`, taken before the
+first run. The retired rig only ever had one for the client, and rebuilding the Server half from a
+stock image cost a full re-provision. RDP is restricted by NSG to one IP on each, verified by
+reading the rule back rather than trusting the write. **Deallocate when pausing**
+(`az vm deallocate`); the two Premium OS disks bill regardless of power state, so delete the group
+when the matrix is not needed. `logs/vm-rig-create.ps1` rebuilds the whole thing and is idempotent
+about the recorded passwords.
+
+**Live gate: G41, and it is a small one.** G40 passed on 2026-09-17 (run 15, one client and one
+Server), so the release-version gate is validated and **`v2.5.2` is ready to cut**. The catch is
+that the profile work landed *after* the run finished, so a release cut from `main` right now would
+ship `path-health.ps1` and the `profile.ps1` changes unvalidated - and `profile.ps1` is the file
+whose failures break every shell. Two honest options: cut `v2.5.2` from `main` as it stood at the
+end of run 15, or validate G41 on the rig (which is still up) and ship both together.
+
+Everything before that is closed: G36-G39 by runs 11, 13 and 14 - which also covered the packages
+added the same day (zoxide, fzf, jq, Python 3.14, terraform-docs, the AWS Session Manager plugin,
+`powershell-yaml`) - and run 11 validated the manifest refresh of commit `f3aeba9` on `mrldev`.
+`v2.5.1` remains Latest and is fully validated. G42 is open but is a pre-existing gap in the resume
+design, not a regression, and does not block a release.
 
 **A trap this change walked straight into, worth keeping in mind for any future edit to
 `get-latestPackages.ps1`.** That file is served from raw `main` but it runs
@@ -117,7 +125,58 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
-- [ ] **G40. Validate the release-version gate on a real machine before cutting `v2.5.2`.**
+- [ ] **G41. The profile changes committed after run 15 have not run on a machine.**
+  `path-health.ps1` (new, deployed next to the profile), the `profile.ps1` changes that dot-source
+  it and the `dev-scripts` fragment, `Assert-PathHealth` in `helper.ps1`, and the two call sites in
+  `config-workstation.ps1` / `docker-ce/config-docker.ps1`. Commits `3a6ae97` and `006014d`.
+
+  **Why this one deserves a real run rather than the usual static checks.** It touches
+  `profile.ps1`, the file whose failures break *every* shell on the machine, and it adds a **sixth
+  deployed file**. Two of the existing five have failed exactly that way: the oh-my-posh theme
+  landed in the drive root for ten months, and every deployed theme carried a BOM until G38.
+
+  Verified locally under 5.1 and pwsh 7.6.6, which this repo's history says counts for little:
+  `@(Test-PathHealth -Quiet).Count` is 1 and Boolean; `Assert-PathHealth` emits 0 objects;
+  `$PSScriptRoot` resolves to the profile's own directory when a profile is dot-sourced, so the
+  sibling is found; with the sibling deliberately absent the profile loads with **0 errors** and
+  everything else still works; and the `dev-scripts` fragment loads its three libraries with the
+  repo present and no-ops with `$env:DEVSCRIPTS` pointed at nothing, 0 errors both ways.
+
+  What a run must check, and the trap in each:
+  - **`path-health.ps1` actually lands next to the deployed profile.** Not `Test-Path` on the
+    source - check the *deployed* copy, and then ask a shell whether it loaded, because that is
+    what G38 taught: `Test-Path` on a file another program must read proves nothing.
+  - **A fresh shell defines `Test-PathHealth` and `docker-w` with no errors and no warning spam.**
+  - **`Assert-PathHealth` appears in the transcript** at both call sites, and reports healthy on a
+    clean box. If it warns on a freshly provisioned machine, the thresholds are wrong, not the box.
+  - **Shell start cost is still ~100 ms.** The startup check is string-only by design; confirm that
+    held.
+  - The `dev-scripts` fragment is untestable on the rig (that repo is not cloned there), so the
+    only assertion available is that its absence is silent - which is the case that matters.
+
+- [ ] **G42. A setup process that dies between reboot gates arms nothing and reports nothing.**
+  Found by run 15 on the Server box: the `winget` phase stopped right after
+  *"Installing or upgrading GoLang.Go..."* and the machine sat for ~60 minutes with **no**
+  `winget.exe`, `msiexec.exe` or setup `powershell.exe` running. Not a hang - the process was gone.
+  State was left at `phases=1 runs=1 reboots=0` with nothing able to continue it, indefinitely.
+
+  **The gap is structural, not incidental.** Every resume path in `helper.ps1` hangs off
+  `Request-Reboot`; a run that dies *between* reboot gates registers no task and leaves no marker,
+  so a dead run is indistinguishable from a slow one forever. Same family as G18 (a failed phase
+  recorded as complete) but worse, because there is no state to inspect. Re-arming recovered
+  cleanly, so the phase design *does* recover - it has no way to **notice**.
+
+  Cause not established. The client box did identical work fine, so it is not the manifest; the
+  leading suspicion is the `-LogonType Interactive` task's process tree dying with its autologon
+  session. Worth reproducing before designing a fix - and note the fix is a watchdog or a
+  heartbeat in the state file, which is new machinery, so do not bolt it on without a run.
+  Do not assume `GoLang.Go` is implicated: it was simply where the log stopped.
+
+- [x] **G40. DONE 2026-09-17 by run 15** - all four gate checks passed on a rebuilt two-SKU rig,
+  and the guard's negative branch was validated for free by phase 1 declining to forward
+  `-setupVersion` to `v2.5.1`. `v2.5.2` can be cut. Full record in `VALIDATION-HISTORY.md`.
+  Original entry below.
+  **G40. Validate the release-version gate on a real machine before cutting `v2.5.2`.**
   Found 2026-09-17 by running the documented one-liner on an already-provisioned box: it downloaded
   `v2.5.1`, found `done` in the state file, skipped all nine phases in **1.2 seconds** and printed
   *"Workstation setup for role 'mrl' finished"*. Nothing from `v2.5.1` was applied — not the theme

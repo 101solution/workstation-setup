@@ -307,6 +307,71 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Closed items from "Remaining"
 
+- [x] **RUN 15 (2026-09-17): the release-version gate (G40), on a rebuilt two-SKU rig. PASSED.**
+  The rig deleted earlier the same day was rebuilt from stock images - `vm-wstest-01` (Windows 11
+  Enterprise 24H2, `azureadmin`) and `vm-wstest-02` (Windows Server 2025, **`test.user`**, dotted so
+  G39 stays exercised) - and **both were snapshotted clean before the first run this time**, which
+  the retired rig only ever had for the client half.
+
+  **The gate.** Phase 1 installed the genuine published `v2.5.1` through the documented one-liner,
+  leaving `phases=9 runs=2 reboots=1 version=(unrecorded)`. Phase 2 overlaid `main` onto the same
+  `c:\config\workstation` and invoked it with `-setupVersion v2.5.2`, which is what
+  `get-latestPackages.ps1` will do once such a release exists. Result
+  `phases=9 runs=3 reboots=1 version=v2.5.2`:
+
+  | check | result |
+  |---|---|
+  | phases re-ran (not just emptied) | PASS |
+  | new version recorded | PASS (`v2.5.2`) |
+  | `rebootCount` preserved as an audit trail | PASS |
+  | no reboot loop | PASS (`reboots` stayed 1) |
+  | post-`v2.5.1` packages actually installed | PASS - zoxide, fzf, jq, terraform-docs all have a winget shim *and* package dir |
+  | theme still BOM-free and parseable (G38) | PASS - first bytes `7B 0D 0A`, JSON parses |
+  | Ubuntu still registered | PASS - `Ubuntu (v2)` via the registry, without starting it |
+
+  Publishing `v2.5.2` was deliberately **not** required to test this; see G40 for why that
+  circularity was avoidable. What remains unproven is only the `/releases` query and zip extract
+  inside `get-latestPackages.ps1` after a real publish, which runs 13/14 already exercised.
+
+  **The guard was validated by the failure case, for free.** Phase 1 fetched
+  `get-latestPackages.ps1` from raw `main` - already carrying the `-setupVersion` forwarding - and it
+  correctly declined to forward the parameter to a `v2.5.1` release that cannot accept it. Had that
+  guard been wrong, phase 1 would not have installed anything at all: `config-workstation.ps1` has
+  `[CmdletBinding()]`, so an unrecognised named parameter aborts before the first line of the body.
+
+  **`Microsoft.OneDrive` installs PER-USER**, to `%LOCALAPPDATA%\Microsoft\OneDrive`, not to
+  `Program Files`. That answers the question left open when it was added to `packages-min.json` the
+  same day: the `/allusers` override was omitted pending evidence, and the evidence is now in. Decide
+  whether per-user is acceptable (fine for a single-user workstation, but a new profile on the same
+  machine gets nothing) or whether to force per-machine.
+
+  **A setup process died mid-run and nothing noticed, which is a real gap.** On the Server box the
+  first phase-1 attempt stopped during the `winget` phase, right after
+  *"Installing or upgrading GoLang.Go..."*, and sat for ~60 minutes. It was not hung: **no**
+  `winget.exe`, `msiexec.exe` or setup `powershell.exe` was left running. The `g40-phase1` task had
+  self-unregistered by design and `config-workstation.ps1` had not armed a resume task because no
+  reboot was owed yet, so the machine was left at `phases=1 runs=1 reboots=0` with nothing whatsoever
+  to continue it - indefinitely. The client box did the identical work fine, so this is not the
+  manifest; the leading suspicion is the `-LogonType Interactive` task's process tree dying with its
+  autologon session. **Every resume path in `helper.ps1` hangs off `Request-Reboot`, so a run that
+  dies *between* reboot gates arms nothing and reports nothing** - same family as G18 but worse,
+  because there is no state to notice. Re-arming phase 1 recovered cleanly (`preflight` skipped,
+  `winget` redone, `done` reached with `reboots=0` since the features were already enabled), which
+  is itself a useful result: the phase design does recover, it just has no way to *notice*.
+
+  **Four of my own probes were wrong before the product was** - the recurring lesson of this repo,
+  and worth the count. The first verifier ran through `az vm run-command`, i.e. as **SYSTEM**, and
+  checked per-user artefacts: `Get-Command zoxide`, `$env:LOCALAPPDATA\...\themes` and `wsl -l -v`
+  all reported MISSING when every one of them was present, because SYSTEM has its own profile,
+  cannot activate a per-user MSIX, and cannot run WSL at all
+  (`Wsl/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED`). The OneDrive check then reported MISSING because it
+  looked only in `Program Files`. Rewritten as `logs/vm-verify-g40-user.ps1`, which addresses the
+  target profile by explicit path and reads WSL registration from the user's loaded hive rather than
+  invoking `wsl`. Separately, the verifier's own `Show-State` helper logged with `Write-Output` while
+  also returning a value, so `$after = Show-State ...` would have bound `@('label', $state)` -
+  caught before it ran, and exactly the contamination `CLAUDE.md` records for `Write-SetupLog`.
+
+
 - [x] **RUNS 13 and 14 (2026-09-16): the `v2.5.1` gate, on both SKUs in parallel. PASSED.**
   Two VMs driven together: `vm-wstest-01` (Windows 11 Enterprise 24H2, account `azureadmin`,
   restored from the clean snapshot) and a purpose-built `vm-wstest-02` (**Windows Server 2025**,
