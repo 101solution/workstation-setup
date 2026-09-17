@@ -231,6 +231,10 @@ Invoke-SetupPhase -Phase 'winget' -Body {
 Write-SetupLog "Update Environment Variables in the session"
 Update-SessionEnvironment
 
+# Installers are the main source of PATH growth, so audit here rather than only at the end: the
+# transcript then shows which phase the machine's PATH looked healthy up to. Reports only.
+Assert-PathHealth -Context 'the winget phase'
+
 Invoke-SetupPhase -Phase 'fonts' -Body {
     Install-Fonts -fontFolder $PSScriptRoot
 }
@@ -263,6 +267,16 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     $profileContent = Get-Content "$PSScriptRoot/profile.ps1" -Encoding UTF8
     $profileContent -replace "#workFolder#", $defaultWorkFolder | Out-File -LiteralPath $psProfilePath -Encoding utf8 -Force
     Unblock-File -LiteralPath $psProfilePath
+
+    # path-health.ps1 sits NEXT TO the profile, which dot-sources it via $PSScriptRoot. No token
+    # substitution and no BOM concern: it is a .ps1, and under 5.1 a BOM actually helps decoding
+    # (unlike the JSON files, where oh-my-posh and Windows Terminal reject one - G38).
+    # Unblock-File matters as much as the copy: a downloaded release zip carries the
+    # mark-of-the-web, and a blocked script makes every shell start with a security prompt.
+    $pathHealthTarget = Join-Path (Split-Path -Parent $psProfilePath) 'path-health.ps1'
+    Write-SetupLog "Creating PATH health helper $pathHealthTarget"
+    Copy-Item -LiteralPath "$PSScriptRoot/path-health.ps1" -Destination $pathHealthTarget -Force
+    Unblock-File -LiteralPath $pathHealthTarget
 
     if (-not (Test-Path -Path $defaultWorkFolder -PathType Container)) {
         Write-SetupLog "Create folder $defaultWorkFolder"

@@ -209,6 +209,34 @@ were initially missed by checks that could not fail:
 - **Chocolatey is gone**, and as of the 2026-09 cleanup no trace of it remains in the repo.
   Don't add choco packages; WinGet or PSGallery only.
 
+## path-health.ps1
+
+`Get-PathEntry`, `Test-PathHealth`, `Repair-PathHealth`. Its own file because **two different
+consumers need the same code**: `profile.ps1` dot-sources it so the functions exist in every shell,
+and `helper.ps1` dot-sources it so setup can audit PATH right after writing it. Ported from a
+hand-maintained profile that had evolved in a OneDrive folder with no version control.
+
+It detects the failure this repo has itself caused. Windows truncates PATH near 2047 characters when
+a process is launched from the GUI, and the cause is usually not growth but **scope mixing** —
+writing the merged process PATH back into one scope
+(`[Environment]::SetEnvironmentVariable('Path', $env:Path, 'Machine')`). That is exactly G24, where
+`Install-WindowsDocker` copied five of `azureadmin`'s directories into the machine variable. **The
+key point: exact-string dedupe does not find this**, because every entry is unique within its own
+scope — you have to compare across scopes.
+
+`Assert-PathHealth` in `helper.ps1` is the setup-side wrapper, called after the `winget` phase and
+immediately after the machine `Path` write in `docker-ce/config-docker.ps1` — G24's exact site, so a
+reintroduction shows up in that run's transcript instead of being found months later by hand. It
+**reports and never repairs, and never throws**: failing a phase over a pre-existing PATH mess would
+block an unattended build for something it did not cause, and silently rewriting a machine-wide
+variable mid-setup is worse than the problem. `Repair-PathHealth` is interactive only, supports
+`-WhatIf`, and backs the old value up to `%LOCALAPPDATA%\workstation-setup\` first.
+
+`Test-PathHealth -Quiet` is string-only with no disk I/O, which is what makes it cheap enough for
+both profile startup and a post-phase check. It is also a value-returning function, so it obeys the
+rule below: `@(Test-PathHealth -Quiet).Count` is 1 (verified), and the `-Quiet` branch must stay free
+of success-stream output or `if (Test-PathHealth -Quiet)` can be fooled.
+
 ## helper.ps1
 
 Dot-sourced by both config scripts. The obsolete Chocolatey and offline-WinGet helpers were removed
@@ -217,7 +245,7 @@ in the 2026-09 cleanup; `Install-Stax2AWS-CLI`, the runner-only `Install-DockerE
 the same month. Everything left is reachable.
 
 Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Install-OhMyPoshStandalone`,
-`Save-Utf8NoBom`,
+`Save-Utf8NoBom`, `Assert-PathHealth` (see `path-health.ps1` above),
 `Update-SessionEnvironment`,
 `Format-Json` (pretty-prints Windows Terminal settings), and `Install-WinGet` (fallback when winget
 cannot be resolved at all). **Never call `winget` or `wt` bare**: on a
@@ -273,6 +301,14 @@ be preserved when editing the source file:
 - `terminal-default-settings.json` → merged into Windows Terminal's `settings.json` as
   `profiles.defaults`, with `startingDirectory` overwritten by `-defaultWorkFolder`. If
   `settings.json` doesn't exist yet, the script launches and kills `wt.exe` to force its creation.
+- `path-health.ps1` → **next to** the deployed profile, unchanged and with no token substitution.
+  `profile.ps1` dot-sources it via `Join-Path $PSScriptRoot 'path-health.ps1'` (verified: `$PSScriptRoot`
+  resolves to the profile's own directory when a profile is dot-sourced), behind a `Test-Path` **and**
+  a `FullLanguage` check — a partial deploy or a ConstrainedLanguage sandbox must still start a clean
+  shell, since a throwing profile breaks every session. Verified both ways: with the sibling present
+  the functions load; without it the profile reports 0 errors and everything else still works.
+  `Unblock-File` is as important as the copy — a downloaded release zip carries the mark-of-the-web,
+  and a blocked script makes every shell start with a security prompt.
 - `.gitconfig` → `$env:UserProfile`, then `-gitUser`/`-gitEmail` applied via `git config --global`.
 - `CaskaydiaCoveNerdFontMono-Regular.ttf` → `C:\Windows\Fonts` plus a font registry entry. The
   terminal font in `terminal-default-settings.json` depends on this.

@@ -16,6 +16,55 @@ Function Write-SetupLog {
     Write-Host "$(Get-Date -Format o): $Message"
 }
 
+# ---------------------------------------------------------------------------------------------
+# PATH health. The audit functions live in path-health.ps1 so the same code serves both the
+# deployed profile and setup itself; see the header there for what it detects and why.
+# Dot-sourced rather than duplicated, and guarded so a partial checkout cannot break setup.
+# ---------------------------------------------------------------------------------------------
+$script:PathHealthScript = Join-Path $PSScriptRoot 'path-health.ps1'
+if (Test-Path -LiteralPath $script:PathHealthScript) { . $script:PathHealthScript }
+
+Function Assert-PathHealth {
+    <#
+        .SYNOPSIS
+            Log PATH health. Reports, never repairs.
+        .DESCRIPTION
+            Called right after setup writes PATH, so corruption is recorded at the moment it is
+            caused rather than discovered later by a user opening a shell. G24 - appending the
+            MERGED process PATH to the Machine scope - was found only because someone read the
+            machine Path by hand afterwards; this makes that check automatic.
+
+            It deliberately does NOT throw and does NOT call Repair-PathHealth. A phase that
+            failed on a pre-existing PATH mess would block an unattended build for something it
+            did not cause, and silently rewriting a machine-wide variable during setup is worse
+            than the problem. Warn, record, let a human run Repair-PathHealth.
+    #>
+    [CmdletBinding()]
+    param([string] $Context = '')
+
+    if (-not (Get-Command Test-PathHealth -ErrorAction SilentlyContinue)) {
+        Write-SetupLog "PATH health check skipped: path-health.ps1 was not found next to helper.ps1."
+        return
+    }
+    $label = if ($Context) { " after $Context" } else { '' }
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+    Write-SetupLog "PATH$label : machine $($machine.Length) chars, user $($user.Length) chars."
+
+    if (Test-PathHealth -Quiet) {
+        Write-SetupLog "PATH$label : healthy."
+        return
+    }
+    # Name the G24 signature explicitly - a user-profile directory in the machine scope is the
+    # thing this repo has actually caused, and it is invisible to exact-string dedupe.
+    $leaked = @(Get-PathEntry -Scope Machine | Where-Object { $_.InUser })
+    if ($leaked.Count) {
+        Write-SetupLog "PATH$label : WARNING - $($leaked.Count) user-profile director(ies) in the MACHINE scope (the G24 signature):"
+        $leaked | ForEach-Object { Write-SetupLog "    $($_.Path)" }
+    }
+    Write-SetupLog "PATH$label : WARNING - issues found. Run Test-PathHealth in a shell for the full audit, Repair-PathHealth to fix."
+}
+
 Function Install-Fonts {
     [CmdletBinding()]
     param (

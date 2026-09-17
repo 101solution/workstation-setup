@@ -169,6 +169,10 @@ Function Install-WindowsDocker {
         [Environment]::SetEnvironmentVariable('Path', "$($machinePath.TrimEnd(';'));C:\docker", [System.EnvironmentVariableTarget]::Machine)
     }
     if (($env:Path -split ';') -notcontains 'C:\docker') { $env:Path = "$env:Path;C:\docker" }
+    # Assert immediately, at the site that caused G24: if the scope-mixing bug is ever
+    # reintroduced here, the transcript says so on that run instead of a user finding it months
+    # later. Reports only - it must not fail the phase over a PATH mess it did not create.
+    Assert-PathHealth -Context 'the machine Path write'
     [Environment]::SetEnvironmentVariable('DOCKER_HOST', 'tcp://127.0.0.1:2378', [System.EnvironmentVariableTarget]::Machine)
 
     if (-not (Test-DockerService)) {

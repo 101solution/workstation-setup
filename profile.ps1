@@ -55,7 +55,11 @@ Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
 Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
 
 Set-PSReadLineOption -ShowToolTips
-Set-PSReadLineOption -PredictionSource History
+# Prediction needs a real console. Agent harnesses (Claude Code, Codex) run commands with
+# redirected stdio, where PSReadLine emits "PredictionSource is not supported" on every command.
+if (-not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected) {
+    Set-PSReadLineOption -PredictionSource History
+}
 
 # PowerShell parameter completion shim for the dotnet CLI
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
@@ -63,4 +67,22 @@ Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
         dotnet complete --position $cursorPosition "$wordToComplete" | ForEach-Object {
            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
         }
+}
+
+# Bare `docker` targets the WSL2 Linux daemon on 2375; the Windows daemon is a separate context on
+# 2378. See docker-ce/README.md.
+function docker-w { docker -c win @args }
+
+# PATH auditing (Test-PathHealth / Repair-PathHealth), deployed next to this profile by
+# config-workstation.ps1. Guarded exactly like carapace and zoxide above: a machine where the file
+# did not land must still start a clean shell, since a broken profile breaks every session.
+# The ConstrainedLanguage test matters because dot-sourcing a FullLanguage script throws under the
+# restricted language mode some agent sandboxes use, and these functions are interactive-only.
+$pathHealth = Join-Path $PSScriptRoot 'path-health.ps1'
+if ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage' -and (Test-Path -LiteralPath $pathHealth)) {
+    . $pathHealth
+    # String-only check, no disk I/O, so it is cheap enough to run on every shell start.
+    if (-not (Test-PathHealth -Quiet)) {
+        Write-Warning "PATH health issues detected - run Test-PathHealth for details."
+    }
 }

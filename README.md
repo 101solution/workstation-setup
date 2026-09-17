@@ -161,6 +161,24 @@ docker run hello-world
 Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `VALIDATION-HISTORY.md`): the Windows
 daemon answers on 2378, and the WSL2 Linux daemon reports `os=linux` on 2375 and runs containers.
 
+## PATH health
+
+Setup deploys `path-health.ps1` next to the PowerShell profile, which loads it automatically, so
+every shell has:
+
+| Command | Does |
+|---|---|
+| `Test-PathHealth` | Audits User and Machine PATH and prints what is wrong |
+| `Repair-PathHealth -Scope User` | Rewrites that scope, dropping wrong-scope, missing and duplicate entries. Supports `-WhatIf`; backs the old value up to `%LOCALAPPDATA%\workstation-setup\` first. `-Scope Machine` needs an elevated shell |
+
+Windows truncates PATH near 2047 characters when a process is launched from the GUI, which breaks
+tools in ways that look unrelated to PATH. The usual cause is not gradual growth but a program
+writing the *merged* process PATH back into a single scope, which copies your user directories into
+the machine-wide variable. That is invisible to ordinary de-duplication, because every entry is
+still unique within its own scope — so the profile runs a cheap check at startup and warns if
+anything looks wrong. Setup also logs a PATH audit after installing packages, so a run's transcript
+shows the state at the time.
+
 ## Terminal
 
 The script configures Oh My Posh for the prompt, PSReadLine for command-line editing (menu
