@@ -94,8 +94,9 @@ command output as UTF-8 and `wsl.exe`'s own messages as UTF-16; stripping `` `0 
   ID, or prefix `MSYS_NO_PATHCONV=1`.
 
 **Working conventions with this user.** Backlog lives in this file; record every outcome here with
-the date, including negative results. They ask to commit and push straight to `main` (branch
-`unattended-setup-and-audit-fixes` is kept identical to `main` via fast-forward). Commit messages
+the date, including negative results. They ask to commit and push straight to `main`; there is no
+mirror branch to maintain (`unattended-setup-and-audit-fixes` was fully merged and deleted
+2026-09-17). Commit messages
 end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `CLAUDE.md`
 (maintainers), `docker-ce/README.md`.
 
