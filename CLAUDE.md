@@ -59,6 +59,31 @@ re-downloading the release would otherwise wipe progress. Every phase is idempot
 the same command is always safe and skips finished work. `-force` clears the state and redoes
 everything.
 
+**A new release redoes every phase, because skipping is otherwise indistinguishable from working.**
+The state file records the release tag under `setupVersion`; `get-latestPackages.ps1` forwards the
+tag it downloaded as `-setupVersion`, and when that differs from the recorded one
+`config-workstation.ps1` empties `completedPhases` before the first phase runs. Without this the
+documented one-liner could never upgrade an existing machine: a second run found `done`, skipped all
+nine phases in about a second, and printed a success banner having installed nothing — which is how
+`v2.5.1` failed to reach a box on 2026-09-17. Three details are load-bearing:
+- **Only the bootstrap knows the version.** A run from a git clone passes nothing, leaves
+  `$setupVersion` empty and keeps plain resume behaviour, which is what a maintainer re-running one
+  phase wants. Don't "fix" this by adding a checked-in VERSION file — it needs a manual bump at
+  release time and will silently rot, exactly like the tag-without-a-release trap below.
+- **The forwarding is guarded, and the guard is not optional.** `get-latestPackages.ps1` is served
+  from raw `main` but runs `config-workstation.ps1` *from the latest release*, so the two are
+  routinely different versions. `config-workstation.ps1` has `[CmdletBinding()]`, which makes an
+  unrecognised named parameter a hard `NamedParameterNotFound` error that aborts **before the first
+  line of the body**. Passing `-setupVersion` unconditionally would have broken the documented
+  one-liner for every user the moment the edit was pushed. It is therefore gated on
+  `(Get-Command $script).Parameters.ContainsKey('setupVersion')`. **Any new parameter forwarded from
+  that file needs the same treatment.**
+- **An unrecorded version counts as different.** Every state file written before 2026-09-17 has no
+  `setupVersion`, so the first release after this change must redo those machines, not skip them.
+  `Get-SetupState`'s shape-normalisation loop adds the field to an old file automatically.
+- **`completedPhases` is emptied in memory, not by deleting the state file**, so `runCount` and
+  `rebootCount` survive as an audit trail. On an unattended box the state file is the only record.
+
 Each script has its **own state file**, set by assigning `$script:SetupStateFileName` right after
 dot-sourcing the helper (`setup-state.json`, `docker-ce-state.json`), so one script's progress can
 never make the other skip work. The phase runner relies on the fact that a dot-sourced function's `$script:` scope *is*

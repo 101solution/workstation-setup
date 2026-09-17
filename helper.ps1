@@ -375,6 +375,10 @@ Function Get-SetupState {
         lastRunUtc      = $null
         resumeCommand   = $null
         resumeMethod    = $null
+        # Release tag this machine was last set up by, so a newer release can tell that the
+        # recorded phases belong to older code and redo them. Null for a run from a git clone,
+        # and null in every state file written before 2026-09-17 - both mean "unknown".
+        setupVersion    = $null
     }
 
     $state = $null

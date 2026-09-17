@@ -40,11 +40,24 @@ from Azure stock images rather than a snapshot. `logs/vm-bootstrap.ps1` still do
 **dotted** admin username, e.g. `test.user`, or G39's staging fix is never exercised. Take a clean
 snapshot of each *before* the first run this time, so the baseline survives.
 
-**Live gate: none, and nothing is unreleased.** G36-G39 are all closed, `main` is clean, and every
-commit on it has shipped in `v2.5.1`. Runs 13/14 (2026-09-16, one client and one Server) closed
-G37/G38/G39 and also covered the packages added the same day - zoxide, fzf, jq, Python 3.14,
-terraform-docs, the AWS Session Manager plugin, `powershell-yaml`. Run 11 validated the manifest
-refresh of commit `f3aeba9` on `mrldev`.
+**Live gate: G40** — the release-version gate added 2026-09-17, which changes when phases re-run and
+has had no run on a real machine. Push `main` freely; **do not publish a release until G40 passes**,
+because publishing is what exposes machines. Everything before it is closed: G36-G39 by runs 11, 13
+and 14 (which also covered the packages added the same day - zoxide, fzf, jq, Python 3.14,
+terraform-docs, the AWS Session Manager plugin, `powershell-yaml`), and run 11 validated the
+manifest refresh of commit `f3aeba9` on `mrldev`. `v2.5.1` remains Latest and is fully validated.
+
+**A trap this change walked straight into, worth keeping in mind for any future edit to
+`get-latestPackages.ps1`.** That file is served from raw `main` but it runs
+`config-workstation.ps1` **from the latest release**, so the two are routinely different versions.
+Forwarding `-setupVersion` unconditionally would therefore have broken the documented one-liner for
+**every user** the moment it was pushed: `config-workstation.ps1` has `[CmdletBinding()]`, so an
+unrecognised named parameter is a hard `NamedParameterNotFound` error that aborts before the first
+line of the body — verified against the real `v2.5.1` param block, where the body never ran. So the
+forwarding is guarded on `(Get-Command $script).Parameters.ContainsKey('setupVersion')`, which is
+false for `v2.5.1`, true for `main`, and false-without-throwing if the file is missing (all three
+tested). An older release now prints a line telling the user to pass `-force` instead of silently
+doing nothing.
 
 **The Docker CE flow does not owe a re-run.** Its last full pass was run 12 (`v2.5.0`, Server 2025,
 both daemons verified). Nothing under `docker-ce/` has changed since, and the only shared file that
@@ -104,8 +117,51 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
-**Nothing open.** G36-G39 were all closed on 2026-09-16 by runs 11, 13 and 14 and now live in
-[`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md); `v2.5.1` is published and is Latest.
+- [ ] **G40. Validate the release-version gate on a real machine before cutting `v2.5.2`.**
+  Found 2026-09-17 by running the documented one-liner on an already-provisioned box: it downloaded
+  `v2.5.1`, found `done` in the state file, skipped all nine phases in **1.2 seconds** and printed
+  *"Workstation setup for role 'mrl' finished"*. Nothing from `v2.5.1` was applied — not the theme
+  BOM fix, not the oh-my-posh standalone, not the seven new packages, and not the `-gitUser` /
+  `-gitEmail` that were passed on the command line, since those live in the `shell` phase
+  (`config-workstation.ps1:277-283`). **The documented bootstrap could not upgrade an existing
+  machine at all**, and the failure printed a success banner — this repo's signature failure mode.
+
+  Fixed by recording the release tag in the state file: `get-latestPackages.ps1` forwards
+  `-setupVersion <tag>` (it already had the tag and only logged it), `Get-SetupState` gained a
+  `setupVersion` default, and `config-workstation.ps1` empties `completedPhases` when the tag
+  differs. An unrecorded version counts as different, so the first release after this change redoes
+  every machine provisioned before it. Mechanism and its three load-bearing details are in
+  `CLAUDE.md` under "Unattended execution and reboot resume".
+
+  **Verified locally, which per this repo's history means little.** All seven branches of the gate
+  pass under Windows PowerShell 5.1 against a real pre-field state file — redo on unrecorded, skip
+  on same tag, redo on newer tag, skip when no tag is passed, no interference with `-force`, fresh
+  machine, and `runCount`/`rebootCount` surviving a version-triggered reset with the JSON round
+  tripping. All five `.ps1` parse under pwsh 7.6.6, five manifests and one shell script check clean.
+  **None of that is a run.** What is unproven:
+  - **The end-to-end upgrade path.** Bootstrap an older release on a clean box, then bootstrap a
+    newer one, and confirm the phases actually re-execute and the new packages land. This is the
+    whole point of the change and has never happened.
+  - **That a genuine resume after a reboot still resumes.** The obvious way for this change to be
+    catastrophic is a mid-setup reset: redo everything, reboot, redo everything, forever. That is
+    **reasoned out and tested, not merely hoped for.** `Save-SetupState` persists `setupVersion`
+    before the first phase runs, so the tag is on disk by the time any reboot happens; and
+    `Get-ResumeCommand` enumerates all bound parameters, so the resume command carries
+    `-setupVersion 'v2.5.1'` verbatim (confirmed). The tags therefore match on the resume pass and
+    the gate is inert — and if the tag were somehow *not* forwarded, an empty value is inert too,
+    so it is safe both ways. A simulated two-pass sequence confirms it: pass 1 records the tag and
+    owes a reboot, pass 2 leaves all 7 completed phases intact, and a later `v2.5.2` bootstrap does
+    reset while preserving `rebootCount`. Still wants **one run that genuinely reboots**, because a
+    simulation of the ordering is not the ordering.
+  - **The Docker CE orchestrator was deliberately left out.** It has its own state file and
+    `get-latestPackages.ps1` never invokes it, so there is no tag to compare; `docker-ce` still
+    needs `-force` to re-apply. Decide whether that asymmetry is acceptable or whether the Docker
+    flow should read the workstation state file's `setupVersion`.
+
+  Needs the rig rebuilt first (see the handover note above), on one client and one Server box.
+
+  *Immediate workaround for any machine already set up:* pass `-force` to
+  `config-workstation.ps1` directly — `get-latestPackages.ps1` has no `-force` parameter.
 
 ---
 

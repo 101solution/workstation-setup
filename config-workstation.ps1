@@ -65,7 +65,10 @@ param (
     $noReboot,
     [Parameter(HelpMessage = "Ignore saved progress and re-run every phase.")]
     [switch]
-    $force
+    $force,
+    [Parameter(HelpMessage = "Release tag being installed, supplied by get-latestPackages.ps1. When it differs from the tag recorded in the state file, every phase is redone.")]
+    [string]
+    $setupVersion = ""
 )
 
 $ErrorActionPreference = 'Continue'
@@ -90,6 +93,25 @@ if ($force) {
 }
 
 $state = Get-SetupState
+
+# A completed state file makes every phase skip, so without this an existing machine could never
+# pick up a new release: the documented one-liner re-ran, found 'done', and exited in a second
+# having installed nothing - while printing a success banner. Only get-latestPackages.ps1 knows
+# which tag it downloaded, so the comparison can only happen when it passes one; a run from a git
+# clone leaves $setupVersion empty and keeps the plain resume behaviour, which is what a
+# maintainer editing the scripts wants. An unrecorded version counts as different, since every
+# state file written before 2026-09-17 predates this field.
+if (-not $force -and -not [string]::IsNullOrWhiteSpace($setupVersion) -and @($state.completedPhases).Count -gt 0) {
+    if ($state.setupVersion -ne $setupVersion) {
+        $installed = if ([string]::IsNullOrWhiteSpace($state.setupVersion)) { '(unrecorded)' } else { $state.setupVersion }
+        Write-SetupLog "This machine was set up by version $installed; installing $setupVersion. Redoing every phase."
+        $state.completedPhases = @()
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($setupVersion)) {
+    $state.setupVersion = $setupVersion
+}
+
 $state.runCount = [int]$state.runCount + 1
 Save-SetupState -State $state
 

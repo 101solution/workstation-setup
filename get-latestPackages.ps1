@@ -50,4 +50,28 @@ Write-Output "Start workstation configuration..."
 $setupArgs = @('-executionpolicy', 'bypass', '-file', "$configPath\workstation\config-workstation.ps1", '-role', $role)
 if (-not [string]::IsNullOrWhiteSpace($gitUser))  { $setupArgs += @('-gitUser', $gitUser) }
 if (-not [string]::IsNullOrWhiteSpace($gitEmail)) { $setupArgs += @('-gitEmail', $gitEmail) }
+# Forward the tag so an already-provisioned machine redoes its phases when this is a newer release
+# than the one that set it up. Without it the second run of this one-liner is a silent no-op.
+#
+# Guarded on the downloaded script actually declaring the parameter, and that guard is not
+# defensive padding: THIS FILE IS SERVED FROM RAW `main` BUT RUNS THE SCRIPT FROM THE LATEST
+# RELEASE, so the two are routinely different versions. config-workstation.ps1 has
+# [CmdletBinding()], which makes an unrecognised named parameter a hard binding error
+# (NamedParameterNotFound) that aborts before the first line of the body - verified against the
+# real v2.5.1 param block. Passing it unconditionally would therefore have broken the documented
+# one-liner for every user the moment this edit landed, until a release understood it.
+$setupScript = "$configPath\workstation\config-workstation.ps1"
+$acceptsVersion = $false
+try {
+    $acceptsVersion = (Get-Command -Name $setupScript -ErrorAction Stop).Parameters.ContainsKey('setupVersion')
+}
+catch {
+    Write-Output "Could not inspect $setupScript for -setupVersion ($($_.Exception.Message)); not forwarding it."
+}
+if ($acceptsVersion -and -not [string]::IsNullOrWhiteSpace($version)) {
+    $setupArgs += @('-setupVersion', $version)
+}
+elseif (-not $acceptsVersion) {
+    Write-Output "Release $version predates -setupVersion; an already-configured machine will skip completed phases. Use -force to redo them."
+}
 powershell.exe @setupArgs
