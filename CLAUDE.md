@@ -10,11 +10,16 @@ role-based JSON package manifests installed via WinGet and PSGallery.
 There is no build, lint, or test. Every change is validated by running the script as Administrator
 on a real (preferably throwaway) Windows machine and reading the transcript log. `TODO.md` holds
 open work; `VALIDATION-HISTORY.md` is the record of what has and has not been validated that way.
-As of **2026-09-14 (run 7, released as v2.4.0)** both entry points have passed end to end from a clean Azure Windows 11 Enterprise 24H2
+As of **2026-09-14 (run 7)** both entry points have passed end to end from a clean Azure Windows 11 Enterprise 24H2
 snapshot: `config-workstation.ps1 -role mrl` in 9 phases and one reboot, then
-`docker-ce/config-docker.ps1` in 6 phases and one reboot, with both daemons verified. The throwaway
-VM, its clean snapshot and the `az vm run-command` driver scripts are described under G7 in
-`VALIDATION-HISTORY.md`. **Treat that history as the main lesson of this repo: nine bugs
+`docker-ce/config-docker.ps1` in 6 phases and one reboot, with both daemons verified. Run 12
+(2026-09-16) repeated both flows on **Windows Server 2025**, and runs 13/14 validated `v2.5.1` on
+one client and one Server box in parallel. **Validate on both SKUs from now on** — the first Server
+run ever found three real bugs, one of which (G38) had been silently broken on every machine since
+the theme copy was written. **The throwaway rig was decommissioned on 2026-09-17** — resource group,
+both VMs and the clean snapshot — so validating the next release starts by rebuilding it from stock
+images; `TODO.md` says where, and the `az vm run-command` driver scripts and run history are under
+G7 in `VALIDATION-HISTORY.md`. **Treat that history as the main lesson of this repo: nine bugs
 (G23-G31) were found only by running it on a real machine, and every one of them had already
 passed the parser, JSON and unit checks.** Two of the worst were not install logic at all - one let a part-failed install record
 success on retry, and one was a readiness check that started the very distro it was checking, so it
@@ -327,6 +332,6 @@ gh release create v2.x.y --verify-tag --title "..." --notes-file notes.md
 
 Publishing is the step with real blast radius: the new release immediately becomes what every
 machine running the bootstrap one-liner installs. `gh release delete v2.x.y` reverts to the previous
-one if needed. Current release: **v2.4.0** (2026-09-14).
+one if needed. Current release: **v2.5.1** (2026-09-16).
 
 The README's role table is hand-maintained; update it when adding a role or materially changing a manifest.
