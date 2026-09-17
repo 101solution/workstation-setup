@@ -33,12 +33,16 @@ Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask
 ### Updating a machine that is already set up
 
 Run the same one-liner again. It downloads whatever release is now Latest, notices that this machine
-was configured by an older one, and redoes every phase so the new packages and fixes actually land.
-Expect roughly the time of a fresh run minus the reboot — WSL2 is already enabled, so there is none.
+was configured by a different version, and redoes every phase so the new packages and fixes actually
+land. This works even for a machine set up before version tracking existed: no recorded version
+counts as a mismatch. Expect roughly the time of a fresh run minus the reboot — WSL2 is already
+enabled, so there is none.
 
-**A machine set up by a release older than `v2.5.2` needs `-force` once**, because those releases
-did not record which version configured them. Without it the run finds its saved progress, skips all
-nine phases in about a second and reports success having installed nothing:
+**This requires the Latest release to be `v2.5.2` or newer**, since the mismatch is detected by the
+release's own `config-workstation.ps1`. While Latest is older than that, the one-liner cannot detect
+anything, and it will say so rather than pretend — but you then have to redo the phases yourself with
+`-force`. Without it the run finds its saved progress, skips all nine phases in about a second and
+reports success having installed nothing:
 
 ```powershell
 powershell.exe -executionpolicy bypass -file c:\config\workstation\config-workstation.ps1 -role mrldev -force
@@ -97,7 +101,8 @@ next run rather than aborting the build.
 Skipping applies to *resuming an interrupted setup*, not to installing a newer release. The state
 file also records the release tag it was set up by, so when the one-liner fetches a newer release
 the phases are redone rather than skipped — otherwise an existing machine could never be upgraded.
-`-force` redoes them unconditionally, which is what a machine configured before `v2.5.2` needs.
+`-force` redoes them unconditionally, which is what you need while the Latest release is still older
+than `v2.5.2` and cannot detect the mismatch itself.
 
 Phases are ordered so that everything that does not need a restart (packages, fonts, modules, shell
 profile, terminal settings) completes first. Only registering the WSL distro waits for the reboot,
