@@ -54,6 +54,10 @@
       "source": "winget"
     },
     {
+      "id": "Microsoft.OneDrive",
+      "source": "winget"
+    },
+    {
       "id": "Anthropic.ClaudeCode",
       "source": "winget"
     },

@@ -64,8 +64,8 @@ skipped.
 | `min` | The base packages only, nothing role-specific |
 
 Every role layers on the base packages from `packages-min.json`: PowerShell, Git, GitHub CLI,
-VS Code, Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, Claude Code, Claude desktop,
-Codex CLI, Node.js LTS, Go, Python, Carapace, zoxide, fzf, jq, PSReadLine, PSRule,
+VS Code, Oh My Posh, Windows Terminal, Ditto, Bing Wallpaper, 7-Zip, OneDrive, Claude Code,
+Claude desktop, Codex CLI, Node.js LTS, Go, Python, Carapace, zoxide, fzf, jq, PSReadLine, PSRule,
 powershell-yaml. `min` is just that base.
 
 ## Manual Setup
