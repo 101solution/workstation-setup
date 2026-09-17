@@ -86,3 +86,13 @@ if ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage' -and (Test-Pa
         Write-Warning "PATH health issues detected - run Test-PathHealth for details."
     }
 }
+
+# Optional Azure/ADO/Terraform helpers from the separate `dev-scripts` repo
+# (ADO MinRes-Infra/NextDigital). That repo owns which libraries load, via its own
+# profile-fragment.ps1 - this profile only decides whether to ask. Setup does not clone it, so most
+# machines will not have it and the Test-Path is the normal case, not an edge case.
+# $HOME is the work folder by the time we get here (set at the top of this file), so the default
+# follows -defaultWorkFolder instead of hardcoding a drive path.
+$devScripts = if ($env:DEVSCRIPTS) { $env:DEVSCRIPTS } else { Join-Path $HOME 'MinRes-Infra\nextdigital\dev-scripts' }
+$devFragment = Join-Path $devScripts 'profile-fragment.ps1'
+if (Test-Path -LiteralPath $devFragment) { . $devFragment }
