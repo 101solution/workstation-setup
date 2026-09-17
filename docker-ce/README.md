@@ -46,6 +46,12 @@ The script is unattended and resumable, using the same phase machinery as `confi
 (redo everything) work exactly as in the workstation script. Logs go to `logs\docker-ce-config-<date>.log`
 in the repo root.
 
+One difference from the workstation script: this one has **no release-version tracking**, because
+`get-latestPackages.ps1` never invokes it and so there is no tag to compare. Its phases are skipped
+whenever they are already recorded as complete, so **to re-apply a newer release of the Docker CE
+scripts you must pass `-force`** — re-running the plain command will report success without doing
+anything.
+
 ## Verify
 
 Open a **new** PowerShell window (so the user-scope `DOCKER_HOST` is picked up) and run:

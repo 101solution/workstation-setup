@@ -16,9 +16,10 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
-Last validated end to end on 2026-09-16 on a fresh Windows 11 Enterprise 24H2 VM: role `mrldev`,
-9 phases, one reboot, 33 minutes including Visual Studio Enterprise 2026. Role `mrl` completed the
-same day in 16 minutes, and the Docker CE step with both daemons verified on 2026-09-14.
+Last validated end to end on 2026-09-16, on **both a Windows 11 Enterprise 24H2 client and a Windows
+Server 2025 box**: role `mrldev` in 9 phases, one reboot, 33 minutes including Visual Studio
+Enterprise 2026, and role `mrl` in 16 minutes. The Docker CE step, with both daemons verified, passed
+on Windows 11 on 2026-09-14 and on Server 2025 on 2026-09-16.
 
 To set your git identity at the same time, add `-gitUser` and `-gitEmail` — they are forwarded to
 `config-workstation.ps1`:
@@ -28,6 +29,25 @@ Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstatio
 ```
 
 Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask who you are.
+
+### Updating a machine that is already set up
+
+Run the same one-liner again. It downloads whatever release is now Latest, notices that this machine
+was configured by an older one, and redoes every phase so the new packages and fixes actually land.
+Expect roughly the time of a fresh run minus the reboot — WSL2 is already enabled, so there is none.
+
+**A machine set up by a release older than `v2.5.2` needs `-force` once**, because those releases
+did not record which version configured them. Without it the run finds its saved progress, skips all
+nine phases in about a second and reports success having installed nothing:
+
+```powershell
+powershell.exe -executionpolicy bypass -file c:\config\workstation\config-workstation.ps1 -role mrldev -force
+```
+
+`get-latestPackages.ps1` has no `-force` of its own, so call `config-workstation.ps1` directly — the
+one-liner has already downloaded it to `c:\config\workstation`. Add `-gitUser` / `-gitEmail` here too
+if you want the git identity applied, since that also lives in a phase that would otherwise be
+skipped.
 
 ## Available Roles
 
@@ -65,6 +85,7 @@ powershell.exe -executionpolicy bypass -file .\config-workstation.ps1 -role <rol
 | `-noReboot` | off | Never restart. Exit code 3010 means a restart is owed; for image pipelines that sequence their own reboots |
 | `-force` | off | Discard saved progress and redo every phase |
 | `-taskName` | `workstation-config-resume` | Name of the resume task / `RunOnce` entry |
+| `-setupVersion` | unset | Release tag being installed. Supplied automatically by `get-latestPackages.ps1`; when it differs from the tag recorded in the state file, every phase is redone. Leave it alone when running from a clone |
 
 ## Unattended execution and reboots
 
@@ -72,6 +93,11 @@ Setup runs as a series of named phases. Each completed phase is recorded in
 `%ProgramData%\workstation-setup\setup-state.json`, so **re-running the same command is always safe**:
 finished work is skipped and only what is left runs. A phase that fails is logged and retried on the
 next run rather than aborting the build.
+
+Skipping applies to *resuming an interrupted setup*, not to installing a newer release. The state
+file also records the release tag it was set up by, so when the one-liner fetches a newer release
+the phases are redone rather than skipped — otherwise an existing machine could never be upgraded.
+`-force` redoes them unconditionally, which is what a machine configured before `v2.5.2` needs.
 
 Phases are ordered so that everything that does not need a restart (packages, fonts, modules, shell
 profile, terminal settings) completes first. Only registering the WSL distro waits for the reboot,
