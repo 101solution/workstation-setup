@@ -1,8 +1,8 @@
 # Repo Fix Backlog
 
 Open work only — and as of 2026-09-18 there is none. Closed items — the 2026-09-11 audit (1-22) and
-the unattended-setup goal (G1-G43, including the nine real-machine bugs G23-G31 and the dropped
-G42) — are in [`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md), with their numbering intact.
+the unattended-setup goal (G1-G43, including the nine real-machine bugs G23-G31) — are in
+[`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md), with their numbering intact.
 
 ## Handover — start here (updated 2026-09-17)
 
@@ -71,9 +71,7 @@ lengths - so do not reuse it as a gate. Details in `VALIDATION-HISTORY.md` under
 Everything before that is closed: G36-G39 by runs 11, 13 and 14 - which also covered the packages
 added the same day (zoxide, fzf, jq, Python 3.14, terraform-docs, the AWS Session Manager plugin,
 `powershell-yaml`) - and run 11 validated the manifest refresh of commit `f3aeba9` on `mrldev`.
-G42 was dropped from the backlog on 2026-09-18 on request, unfixed - a pre-existing gap in the
-resume design, not a regression, and it never blocked a release. The evidence and a cheaper fix than
-the one it proposed are kept in `VALIDATION-HISTORY.md`. **Nothing is open.**
+**Nothing is open.**
 
 **A trap this change walked straight into, worth keeping in mind for any future edit to
 `get-latestPackages.ps1`.** That file is served from raw `main` but it runs

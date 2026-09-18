@@ -310,37 +310,6 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Closed items from "Remaining"
 
-- [x] **G42. DROPPED 2026-09-18 on request. Not fixed, not explained** - recorded here so it is not
-  rediscovered from scratch. *A setup process that dies between reboot gates arms nothing and
-  reports nothing.*
-
-  Found by run 15 on the Server box: the `winget` phase stopped right after *"Installing or upgrading
-  GoLang.Go..."* and the machine sat for ~60 minutes with **no** `winget.exe`, `msiexec.exe` or
-  setup `powershell.exe` running. Not a hang - the process was gone. State froze at
-  `phases=1 runs=1 reboots=0` with nothing able to continue it, indefinitely. Re-arming recovered
-  cleanly, so the phase design *does* recover; it has no way to **notice**. Don't assume `GoLang.Go`
-  is implicated - it was simply where the log stopped, and the client box did identical work fine,
-  so it is not the manifest.
-
-  **Run 16 is weak counter-evidence, not a clearance.** The same `-LogonType Interactive` at-logon
-  task on the same Server SKU completed fine - but it did four minutes of light work with the
-  packages already installed, against run 15's long fresh install, so the leading suspicion (the
-  task's process tree dying with its autologon session) still stands untested.
-
-  **The fix is probably smaller than the original entry assumed.** That entry called for a watchdog
-  or a state-file heartbeat - new machinery. But the mechanism already exists and is armed too late:
-  every resume path hangs off `Request-Reboot`. `Get-ResumeCommand` needs only `$ScriptPath` and
-  `$BoundParameters`, and `Reason` belongs to `Request-Reboot` rather than to arming, so
-  `Register-ResumeTask` could be called **once at the start of a run**. `Complete-Setup` already
-  clears the resume hooks on completion, including when a phase threw and it exits 1. That makes the
-  armed hook its own discriminator: any run that finishes clears it, and only a run whose process
-  vanished leaves it armed for the next logon to pick up. No watchdog, no heartbeat, no second task.
-  It still does not *notice* - recovery waits for a logon - so it addresses being stuck
-  indefinitely, not the detection gap in the title.
-
-  Unvalidated, and deliberately so: it touches the resume machinery, which is where this repo once
-  produced an infinite reboot loop, and the rig needed to test it was deleted the same day.
-
 - [x] **RUN 16 (2026-09-18): the published `v2.5.2`, on both SKUs. PASSED - G41 and G43 closed.**
   The first run of a *published* release rather than an overlay, and deliberately **not** from the
   clean snapshots: the rig's existing disks were already provisioned by run 15, which made this an
