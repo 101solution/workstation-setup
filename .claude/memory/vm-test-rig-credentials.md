@@ -20,6 +20,18 @@ their defaults. In run 10 `--parameters "AdminPassword=$pw" "Role=mrldev"` bound
 wrong role for 20 minutes before anyone noticed. Embed values in the script text and send it with
 `--scripts` only.
 
+  *Run 16 (2026-09-18) used `--parameters` anyway and got away with it — the rule still stands.* It
+  worked only because neither recorded password happened to contain `=`, which is luck, not safety:
+  `[System.Web.Security.Membership]::GeneratePassword` can emit one. The run did do the one thing
+  that makes the gamble survivable — the script echoed the role it had baked in (*"armed for
+  azureadmin, role mrl"*) and that was read before restarting. If you find yourself reaching for
+  `--parameters`, assert every value back out of the remote script's own output first.
+
+**Clean up autologon when the runs are done.** A run arms `AutoAdminLogon=1` with the password in
+clear text under `Winlogon`, and nothing disarms it — run 16 left both boxes that way. `quser`-based
+debugging needs it, so it cannot be armed later; instead make `logs\vm-clear-creds.ps1` part of
+finishing, or delete the VMs, which is the only disarming that cannot be forgotten.
+
 **A no-session failure looks identical to a slow start.** Symptoms: no state file minutes after
 restart, task `state=Ready` with `lastRun=11/30/1999` and `lastResult=267011` (0x41303, never run),
 and `quser` reporting "No User exists". `Start-ScheduledTask` does **not** rescue it — an

@@ -1,2 +1,3 @@
 - [Avoid scheduled tasks](avoid-scheduled-tasks-preference.md) — lead with task-free resume options; elevated auto-resume has a hard constraint
-- [VM test rig credentials](vm-test-rig-credentials.md) — the admin file is two lines, never use `az run-command --parameters`, and gate the restart on the generated role
+- [VM test rig credentials](vm-test-rig-credentials.md) — the admin file is two lines, never use `az run-command --parameters`, gate the restart on the generated role, and disarm autologon when done
+- [Generated PowerShell escape trap](generated-powershell-escape-trap.md) — don't build Windows paths through Python from the Bash tool; `\b`/`\t`/`\v` turn into control characters in silence
