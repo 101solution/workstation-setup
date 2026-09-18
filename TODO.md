@@ -27,27 +27,28 @@ with the manifest refresh. The last breaking release was **`v2.4.0`**: `-role ru
 and found three bugs (G37, G38, G39), one of which had been silently broken on every machine since
 the theme copy was written. Validate on **one client and one Server** box from now on.
 
-**State of the test rig (2026-09-17).** Deleted this morning on request, then **rebuilt the same
-day** to validate G40. Resource group `S101-ARG-WSTEST-MRL` in VS_Sub_MRL again holds:
+**State of the test rig (2026-09-18): gone.** Resource group `S101-ARG-WSTEST-MRL` in VS_Sub_MRL was
+deleted on request after run 16 - both VMs, both Premium P10 OS disks, the network shell and
+**both clean snapshots** (`snap-vm-wstest-0{1,2}-clean-20260917`). The run 16 transcripts went with
+it; its numbers are in `VALIDATION-HISTORY.md`. The teardown also disposed of the cleartext
+autologon password each run leaves under `Winlogon`, which is the only way that cleanup cannot be
+forgotten.
+
+**Rebuilding starts from stock images.** `logs/vm-rig-create.ps1` does the whole thing and is
+idempotent about the recorded passwords in `logs/vm-wstest-0{1,2}-admin.txt` (still present, and
+still the credentials the script will reuse). What the rig must look like:
 
 | VM | SKU | Admin | Why that admin |
 |---|---|---|---|
 | `vm-wstest-01` | Windows 11 Enterprise 24H2 | `azureadmin` | client half of the matrix |
 | `vm-wstest-02` | Windows Server 2025 | **`test.user`** | the dot is deliberate - it reproduces the 8.3 short name that breaks NSIS installers, so G39's staging fix stays exercised |
 
-**Run 16 left autologon armed on both boxes** (`AutoAdminLogon=1` with the admin password in clear
-text under `Winlogon`, the standing trade-off for an unattended at-logon task) plus scratch scripts
-at `c:\run-v252-test.ps1`, `c:\shell-*.ps1`, `c:\theme-*.ps1`, `c:\omp-*.ps1` and the transcript
-`c:\v252-test.log`. Both VMs are deallocated and RDP is NSG-restricted, so nothing is exposed while
-they are off - but run `logs\vm-clear-creds.ps1` on the next start rather than leaving it.
-
-**Both have a clean snapshot this time** - `snap-vm-wstest-0{1,2}-clean-20260917`, taken before the
-first run. The retired rig only ever had one for the client, and rebuilding the Server half from a
-stock image cost a full re-provision. RDP is restricted by NSG to one IP on each, verified by
-reading the rule back rather than trusting the write. **Deallocate when pausing**
-(`az vm deallocate`); the two Premium OS disks bill regardless of power state, so delete the group
-when the matrix is not needed. `logs/vm-rig-create.ps1` rebuilds the whole thing and is idempotent
-about the recorded passwords.
+Then **snapshot both before the first run** - the 2026-09-17 rig had a snapshot only for the client
+and rebuilding the Server half cost a full re-provision, and run 16 needed a clean
+`LongPathsEnabled = 0` box to exercise a branch no other machine could. Restrict RDP by NSG to one
+IP on each and verify by reading the rule back rather than trusting the write. **Deallocate when
+pausing** (`az vm deallocate`); the Premium OS disks bill regardless of power state, so delete the
+group again when the matrix is not needed.
 
 **`v2.5.2` was cut from `main` on 2026-09-18, is Latest, and was then validated on both SKUs by
 run 16 the same day.** It carries the release-version gate (G40, run 15), the

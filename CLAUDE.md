@@ -14,12 +14,13 @@ As of **2026-09-14 (run 7)** both entry points have passed end to end from a cle
 snapshot: `config-workstation.ps1 -role mrl` in 9 phases and one reboot, then
 `docker-ce/config-docker.ps1` in 6 phases and one reboot, with both daemons verified. Run 12
 (2026-09-16) repeated both flows on **Windows Server 2025**, and runs 13/14 validated `v2.5.1` on
-one client and one Server box in parallel. **Validate on both SKUs from now on** — the first Server
-run ever found three real bugs, one of which (G38) had been silently broken on every machine since
-the theme copy was written. **The throwaway rig was decommissioned on 2026-09-17** — resource group,
-both VMs and the clean snapshot — so validating the next release starts by rebuilding it from stock
-images; `TODO.md` says where, and the `az vm run-command` driver scripts and run history are under
-G7 in `VALIDATION-HISTORY.md`. **Treat that history as the main lesson of this repo: nine bugs
+one client and one Server box in parallel. Run 16 (2026-09-18) validated the published `v2.5.2` on
+both SKUs, upgrading from an already-provisioned state rather than from clean. **Validate on both
+SKUs from now on** — the first Server run ever found three real bugs, one of which (G38) had been
+silently broken on every machine since the theme copy was written. **The throwaway rig was
+decommissioned again on 2026-09-18** — resource group, both VMs and both clean snapshots — so
+validating the next release starts by rebuilding it from stock images; `TODO.md` says how, and the
+`az vm run-command` driver scripts and run history are under G7 in `VALIDATION-HISTORY.md`. **Treat that history as the main lesson of this repo: nine bugs
 (G23-G31) were found only by running it on a real machine, and every one of them had already
 passed the parser, JSON and unit checks.** Two of the worst were not install logic at all - one let a part-failed install record
 success on retry, and one was a readiness check that started the very distro it was checking, so it

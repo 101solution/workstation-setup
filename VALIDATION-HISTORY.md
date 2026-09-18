@@ -21,23 +21,26 @@ a container to `exitCode=0`. Getting there took **nine bugs that only a real mac
 **Three releases followed.** `v2.4.0` (2026-09-14, commit `f977c29`) was the first, and the last
 **breaking** one: `-role runner`, `-role ce-corp`, `-role ce-free`, `containers/` and
 `-installStax2AWS` are all gone. `v2.5.0` (2026-09-16) carried the manifest refresh, and
-**`v2.5.1` (2026-09-16, commit `1f38645`) is Latest** — the theme BOM fix (G38), the Server
-prompt-speed fix (G37), the installer staging fix (G39) and the new shell/CLI tools. Each was
-published as a GitHub *Release*, not just a tag: `get-latestPackages.ps1` queries `/releases` and
-filters non-draft/non-prerelease, so a bare tag reaches nobody.
+`v2.5.1` (2026-09-16, commit `1f38645`) carried the theme BOM fix (G38), the Server
+prompt-speed fix (G37), the installer staging fix (G39) and the new shell/CLI tools. **`v2.5.2`
+(2026-09-18) is Latest** — the release-version gate (G40), PATH health (G41) and the `longpaths`
+phase (G43). Each was published as a GitHub *Release*, not just a tag: `get-latestPackages.ps1`
+queries `/releases` and filters non-draft/non-prerelease, so a bare tag reaches nobody.
 
-**Live gate: none.** G36 was closed by run 11, and G37/G38/G39 by runs 13/14 — one client and one
-Server box, in parallel. Every commit on `main` has shipped in `v2.5.1`.
+**Live gate: none.** G36 was closed by run 11, G37/G38/G39 by runs 13/14, G40 by run 15 and
+G41/G43 by run 16 — one client and one Server box each time. Every commit on `main` has shipped in
+`v2.5.2`, and `v2.5.2` has a run behind it.
 
 **Server 2025 is permanently in the matrix.** Run 12 was the first Server-SKU run ever and found
 three real bugs immediately, one of which had been silently broken on every machine since the theme
 copy was written. Validate on **one client and one Server** box from now on.
 
-**The rig those runs used no longer exists.** Resource group `S101-ARG-WSTEST-MRL` was deleted on
-2026-09-17 on request — `vm-wstest-01`, `vm-wstest-02`, both Premium OS disks, the network shell and
-the clean snapshot `snap-vm-wstest-01-clean-20260911`. Every run recorded below was measured before
-that, and the restore procedures they describe are history, not instructions. `TODO.md` has what to
-rebuild.
+**No rig currently exists.** Resource group `S101-ARG-WSTEST-MRL` was deleted on 2026-09-17, rebuilt
+the same day for runs 15 and 16, and deleted again on 2026-09-18 — both VMs, both Premium P10 OS
+disks, the network shell and both clean snapshots. Every run recorded below was measured on a rig
+that is gone, so the restore and disk-swap procedures they describe are history, not instructions.
+`TODO.md` has what to rebuild and the one thing to get right that the 2026-09-17 rebuild nearly
+missed: snapshot **both** SKUs before the first run.
 
 
 **Next steps, in order.** Items 1-4 are all done; what remains is housekeeping and the open
