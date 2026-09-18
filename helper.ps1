@@ -391,6 +391,43 @@ Function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
     }) -Join "`n"
 }
 
+Function Enable-LongPaths {
+    <#
+        .SYNOPSIS
+            Lifts the 260-character MAX_PATH limit, for Windows machine-wide and for git in every
+            user's shell.
+        .DESCRIPTION
+            Two independent opt-ins, because neither covers the other. The registry value is what
+            Win32 callers honour (MSBuild, dotnet, Explorer, Windows PowerShell); git ignores it and
+            needs core.longpaths, which switches it to the Unicode long-path APIs. core.longpaths is
+            written to git's *system* scope so it also applies to accounts setup never ran for.
+
+            No reboot: the long-path flag is read when a process starts, so processes already running
+            keep the old limit and everything launched afterwards gets the new one.
+    #>
+    $fileSystemKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+    $enabled = (Get-ItemProperty -Path $fileSystemKey -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
+    if (1 -eq $enabled) {
+        Write-SetupLog "  Windows long paths are already enabled"
+    }
+    else {
+        Write-SetupLog "  Enabling Windows long paths (LongPathsEnabled is currently '$enabled') ..."
+        New-ItemProperty -Path $fileSystemKey -Name LongPathsEnabled -PropertyType DWord -Value 1 -Force | Out-Null
+    }
+
+    $git = Get-Command -Name git.exe -ErrorAction SilentlyContinue
+    if (-not $git) {
+        throw "git.exe not found, so core.longpaths cannot be set. This phase depends on the winget phase installing Git.Git; it will be retried on the next run."
+    }
+    & $git.Source config --system core.longpaths true
+    # Read it back: the write is silent either way, and an unwritable system config is plausible.
+    $applied = & $git.Source config --system --get core.longpaths
+    if ('true' -ne $applied) {
+        throw "git core.longpaths is '$applied' in the system scope after setting it, expected 'true'. git could not write its system config; run 'git config --system --list --show-origin' elevated to see which file it means."
+    }
+    Write-SetupLog "  git core.longpaths = true (system scope)"
+}
+
 #region Unattended execution and reboot resume
 # ---------------------------------------------------------------------------------------------
 # Setup runs in named phases. Completed phases are recorded in a state file outside the repo so a

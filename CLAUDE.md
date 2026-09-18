@@ -91,7 +91,7 @@ the caller's: `Invoke-SetupPhase`, `Request-PhaseReboot` and `Invoke-RebootGate`
 `$rebootPending` and `$rebootReason` from the calling script (verified with a scratch test).
 
 **Phase order is load-bearing.** In `config-workstation.ps1`, `wsl-features` runs first and with
-`-NoRestart`, then all the slow work (`winget`, `fonts`, `psmodules`, `shell`, `terminal`), then a
+`-NoRestart`, then all the slow work (`winget`, `fonts`, `psmodules`, `longpaths`, `shell`, `terminal`), then a
 single reboot gate, then `wsl-distro`. The Docker CE orchestrator has `containers-feature` and
 `environment` before the gate, then `docker-windows`, `docker-linux` and `wsl-autostart` after it
 (dockerd cannot start until the Containers feature is live). The point is that **at most one reboot ever happens**
@@ -209,6 +209,32 @@ were initially missed by checks that could not fail:
 - **Chocolatey is gone**, and as of the 2026-09 cleanup no trace of it remains in the repo.
   Don't add choco packages; WinGet or PSGallery only.
 
+## Long paths
+
+The `longpaths` phase (`Enable-LongPaths` in `helper.ps1`) lifts the 260-character `MAX_PATH` limit.
+It runs after `winget` because it needs `git.exe`, and before the reboot gate because it needs no
+restart: the long-path flag is read when a process starts, so anything launched after the phase gets
+the new limit.
+
+**Two separate opt-ins, and neither covers the other.** `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled`
+is what Win32 callers honour — MSBuild, dotnet, Explorer, Windows PowerShell. **git ignores it
+entirely** and needs `core.longpaths`, which switches it to the Unicode long-path APIs. Setting only
+one of the two looks like it worked until the other kind of tool hits a long path.
+
+The failure it exists to prevent is not a clean error. A repo containing a path over 260 characters
+(a Power BI custom visual under a long report name is enough) aborts `git clone` with **exit 128
+after git has already written thousands of files and no index** — so the half-finished clone
+presents as a mountain of uncommitted changes, and any tooling with a don't-touch-dirty-work rule
+then refuses to go near it. The symptom points at local edits, not at the clone.
+
+`core.longpaths` is written to git's **system** scope, so it applies to accounts setup never ran
+for; the shipped `.gitconfig` also carries it, which covers the setup user if a Git reinstall
+rewrites `etc\gitconfig`. Same value in both, so the two cannot disagree. The phase **reads the
+value back** with `git config --system --get` and throws if it is not `true` rather than trusting
+the write's exit code: an unwritable `etc\gitconfig` is the realistic failure (unelevated it prints
+*error: could not lock config file*), and G38's lesson is that the only proof of a config write is
+reading it back out of the tool that has to honour it.
+
 ## path-health.ps1
 
 `Get-PathEntry`, `Test-PathHealth`, `Repair-PathHealth`. Its own file because **two different
@@ -245,7 +271,7 @@ in the 2026-09 cleanup; `Install-Stax2AWS-CLI`, the runner-only `Install-DockerE
 the same month. Everything left is reachable.
 
 Called: `Install-WinGetPackage`, `Install-PSModule`, `Install-Fonts`, `Install-OhMyPoshStandalone`,
-`Save-Utf8NoBom`, `Assert-PathHealth` (see `path-health.ps1` above),
+`Save-Utf8NoBom`, `Assert-PathHealth` (see `path-health.ps1` above), `Enable-LongPaths`,
 `Update-SessionEnvironment`,
 `Format-Json` (pretty-prints Windows Terminal settings), and `Install-WinGet` (fallback when winget
 cannot be resolved at all). **Never call `winget` or `wt` bare**: on a
@@ -310,6 +336,8 @@ be preserved when editing the source file:
   `Unblock-File` is as important as the copy — a downloaded release zip carries the mark-of-the-web,
   and a blocked script makes every shell start with a security prompt.
 - `.gitconfig` → `$env:UserProfile`, then `-gitUser`/`-gitEmail` applied via `git config --global`.
+  It carries `core.longpaths = true`, which the `longpaths` phase also writes to git's system scope —
+  see "Long paths" below for why both.
 - `CaskaydiaCoveNerdFontMono-Regular.ttf` → `C:\Windows\Fonts` plus a font registry entry. The
   terminal font in `terminal-default-settings.json` depends on this.
 

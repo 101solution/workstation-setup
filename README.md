@@ -161,6 +161,19 @@ docker run hello-world
 Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `VALIDATION-HISTORY.md`): the Windows
 daemon answers on 2378, and the WSL2 Linux daemon reports `os=linux` on 2375 and runs containers.
 
+## Long paths
+
+Setup lifts the 260-character `MAX_PATH` limit, which needs **two** unrelated opt-ins: the
+`LongPathsEnabled` machine policy, which is what MSBuild, dotnet, Explorer and Windows PowerShell
+honour, and git's own `core.longpaths`, which git needs because it ignores the machine policy
+entirely. Both are set, and `core.longpaths` goes into git's system scope so it holds for every
+account on the box.
+
+Without it, cloning a repo that contains a path over 260 characters fails in a way that does not
+look like a path problem: `git clone` exits 128 having already written thousands of files and no
+index, so the half-finished clone shows up as thousands of uncommitted changes. No reboot is needed
+— shells and tools started after setup pick the new limit up.
+
 ## PATH health
 
 Setup deploys `path-health.ps1` next to the PowerShell profile, which loads it automatically, so

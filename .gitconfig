@@ -26,6 +26,9 @@
     sq = !git reset --soft 
 [core]
 	editor = code --wait --new-window
+	# git ignores the Windows long-path registry flag, so it needs its own opt-out; setup also
+	# sets this in the system scope, and this copy survives a Git reinstall rewriting that file.
+	longpaths = true
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f

@@ -49,6 +49,12 @@ ship `path-health.ps1` and the `profile.ps1` changes unvalidated - and `profile.
 whose failures break every shell. Two honest options: cut `v2.5.2` from `main` as it stood at the
 end of run 15, or validate G41 on the rig (which is still up) and ship both together.
 
+**G43 joined the queue on 2026-09-18**, and it rides along with whatever run clears G41: a new
+`longpaths` phase that lifts the 260-character path limit, after a clone on `dev-cs-01` died at
+exit 128 half-written and looked like 4,453 local edits. Takes the phase count to **10**. Its one
+genuinely unproven branch is the registry write, because every machine tried so far already had
+`LongPathsEnabled = 1` - only a clean snapshot will exercise it.
+
 Everything before that is closed: G36-G39 by runs 11, 13 and 14 - which also covered the packages
 added the same day (zoxide, fzf, jq, Python 3.14, terraform-docs, the AWS Session Manager plugin,
 `powershell-yaml`) - and run 11 validated the manifest refresh of commit `f3aeba9` on `mrldev`.
@@ -153,6 +159,35 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
     held.
   - The `dev-scripts` fragment is untestable on the rig (that repo is not cloned there), so the
     only assertion available is that its absence is silent - which is the case that matters.
+
+- [ ] **G43. The `longpaths` phase has never run elevated on a machine.**
+  New phase in `config-workstation.ps1` plus `Enable-LongPaths` in `helper.ps1`, and
+  `core.longpaths = true` added to the shipped `.gitconfig`. Motivated by a real failure on
+  `dev-cs-01` on 2026-09-18: a clone of a repo holding Power BI custom-visual paths of 262 and 264
+  characters aborted with **exit 128 after writing 4,436 files and no index**, so the half-finished
+  clone presented as 4,453 uncommitted changes and the clone tool refused to touch it under its
+  never-lose-in-flight-work rule. Rationale and the two-opt-ins trap are in `CLAUDE.md` under
+  "Long paths".
+
+  **Verified locally, which this repo's history says counts for little.** All six `.ps1` parse under
+  pwsh 7 (count printed), the five manifests round-trip, `git config -f .gitconfig --get
+  core.longpaths` returns `true` from the edited file, and an **unelevated** run of
+  `Enable-LongPaths` under 5.1 takes the already-enabled branch on the registry and then throws on
+  the system-scope write with git's own *could not lock config file* in the transcript - i.e. the
+  read-back does catch a failed write instead of reporting success.
+
+  What a run must check:
+  - **The registry write happens on a box where the value is absent or 0.** Every machine tested so
+    far already had `LongPathsEnabled = 1`, so the `New-ItemProperty` branch has never executed.
+    The rig's clean snapshots are the only place to see it.
+  - **`git config --system --list --show-origin` shows `core.longpaths=true`** afterwards, and the
+    phase's own read-back line is in the transcript.
+  - **A clone of a >260-character path actually succeeds** - the point of the change, and the only
+    check that tests the end state rather than the switches. `corpdatafabric-data` is the known
+    reproducer.
+  - **The phase is idempotent**: a second run logs already-enabled and does not fail.
+  - **Phase count is now 10, not 9.** Confirm the state file records `longpaths` and that a resume
+    after the reboot still skips it.
 
 - [ ] **G42. A setup process that dies between reboot gates arms nothing and reports nothing.**
   Found by run 15 on the Server box: the `winget` phase stopped right after

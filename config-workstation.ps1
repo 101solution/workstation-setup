@@ -246,6 +246,17 @@ Invoke-SetupPhase -Phase 'psmodules' -Body {
     }
 }
 
+# ---------------------------------------------------------------------------------------------
+# Phase: long paths. Needs git.exe, so it sits after the winget phase; needs no restart, so it
+# stays on this side of the reboot gate. Without it a repo containing a path over 260 characters
+# cannot be cloned: git aborts with exit 128 having already written thousands of files and no
+# index, which presents as a mountain of uncommitted changes rather than as a failed clone.
+# ---------------------------------------------------------------------------------------------
+Invoke-SetupPhase -Phase 'longpaths' -Body {
+    Write-SetupLog "Lifting the 260-character path limit ..."
+    Enable-LongPaths
+}
+
 # All per-user, which is why the resume task runs as the invoking user and never as SYSTEM.
 Invoke-SetupPhase -Phase 'shell' -Body {
     # Everything below is configuration for tools the winget phase installs. Fail with a clear
