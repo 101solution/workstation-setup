@@ -307,6 +307,64 @@ Design is documented in the "Unattended execution and reboot resume" section of 
 
 ### Closed items from "Remaining"
 
+- [x] **RUN 16 (2026-09-18): the published `v2.5.2`, on both SKUs. PASSED - G41 and G43 closed.**
+  The first run of a *published* release rather than an overlay, and deliberately **not** from the
+  clean snapshots: the rig's existing disks were already provisioned by run 15, which made this an
+  upgrade test as well. `vm-wstest-01` had `version=v2.5.2` recorded from run 15's *synthetic* tag -
+  now a real release, so it would have matched and skipped everything - and was rewritten to
+  `v2.5.1` first. `vm-wstest-02` was `(unrecorded)`, which is the other branch of the gate, and was
+  left alone.
+
+  Both boxes ran the README one-liner verbatim through an at-logon elevated task as the admin user.
+  The gate fired immediately on both (`phases` 9 -> 2 within a minute) and each finished **10
+  phases** and `done` with `exit 0` in about four minutes, no reboot - WSL2 was already enabled.
+
+  | check | vm-wstest-01 (Win11) | vm-wstest-02 (Server 2025) |
+  |---|---|---|
+  | upgrade detected and phases re-ran | PASS (`v2.5.1` -> `v2.5.2`) | PASS (`(unrecorded)` -> `v2.5.2`) |
+  | `longpaths` phase recorded, 10 phases | PASS | PASS |
+  | `LongPathsEnabled` 0 -> 1 | PASS - **the branch that had never executed anywhere** | PASS |
+  | `core.longpaths` in git's system scope | PASS - `file:C:/Program Files/Git/etc/gitconfig` | PASS |
+  | shipped `.gitconfig` carries it | PASS | PASS |
+  | `path-health.ps1` deployed beside the profile, not MOTW-blocked | PASS | PASS |
+  | fresh shell **as the admin user**: profile loads | PASS - 0 errors | PASS - 0 errors |
+  | `Test-PathHealth` / `Repair-PathHealth` / `Get-PathEntry` defined | PASS | PASS |
+  | `@(Test-PathHealth -Quiet).Count -eq 1` | PASS - value `True` | PASS - value `True` |
+  | `$HOME` redirected to the work folder | PASS - `c:\projects` | PASS - `c:\projects` |
+  | theme BOM-free **and parsed by oh-my-posh** (G38) | PASS - 71 ms render | PASS - 26 ms render |
+  | prompt binary is MSIX on client, standalone on Server (G37) | PASS - `WindowsApps` | PASS - `...\oh-my-posh\bin` |
+
+  **A probe that lied, and it argued for deleting the feature.** The long-path end-state test was a
+  synthetic repo built with git plumbing (`hash-object` / `update-index --cacheinfo` / `write-tree`),
+  cloned with `core.longpaths` forced both ways and `LongPathsEnabled` flipped both ways. On the rig
+  **all four cells checked out cleanly at path lengths up to 774 characters**, which reads as
+  "neither opt-in matters, the phase is pointless". The identical script on `dev-cs-01` fails at 294
+  characters with `core.longpaths=false`. The discrepancy is **unexplained** - same
+  `git 2.55.0.windows.3`, same path lengths. Do not use that script as the gate for anything.
+
+  **The real gate was the repo that failed in the first place.** `corpdatafabric-data` re-cloned
+  from the local copy into a 56-character prefix, reproducing the reported numbers exactly (longest
+  tracked path 207 chars relative, 264 absolute), on a box where `LongPathsEnabled` was **already 1**:
+
+  ```
+  core.longpaths=false -> exit=128  tracked=0  dirty=3936
+      error: unable to create file finance/...PBI_CV_7B952816....pbiviz.json: Filename too long
+      fatal: unable to checkout working tree
+  core.longpaths=true  -> exit=0    tracked=3921  dirty=0
+  ```
+
+  That is the whole premise of G43 confirmed from both ends: the machine policy does **not** cover
+  git, `core.longpaths` is what fixes it, and the failure mode really is a half-written tree with no
+  index that looks like thousands of local edits.
+
+  **Two of this run's own probes failed silently before they worked**, both in the family this repo
+  keeps relearning. The first clone test built an **empty** source repo - `git init -q --bare=false`
+  is not valid syntax and its stderr was piped to `Out-Null` - and then reported *both* clones as
+  passing, because a clone of an empty repo trivially succeeds. The theme check reported the theme
+  missing when it was present, because the inner script was patched through a non-raw Python string
+  and lost a backslash from `Programs\oh-my-posh\themes`. Assert the setup of a probe, and never
+  edit generated PowerShell through a language with its own escape rules.
+
 - [x] **RUN 15 (2026-09-17): the release-version gate (G40), on a rebuilt two-SKU rig. PASSED.**
   The rig deleted earlier the same day was rebuilt from stock images - `vm-wstest-01` (Windows 11
   Enterprise 24H2, `azureadmin`) and `vm-wstest-02` (Windows Server 2025, **`test.user`**, dotted so

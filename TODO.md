@@ -35,6 +35,12 @@ day** to validate G40. Resource group `S101-ARG-WSTEST-MRL` in VS_Sub_MRL again 
 | `vm-wstest-01` | Windows 11 Enterprise 24H2 | `azureadmin` | client half of the matrix |
 | `vm-wstest-02` | Windows Server 2025 | **`test.user`** | the dot is deliberate - it reproduces the 8.3 short name that breaks NSIS installers, so G39's staging fix stays exercised |
 
+**Run 16 left autologon armed on both boxes** (`AutoAdminLogon=1` with the admin password in clear
+text under `Winlogon`, the standing trade-off for an unattended at-logon task) plus scratch scripts
+at `c:\run-v252-test.ps1`, `c:\shell-*.ps1`, `c:\theme-*.ps1`, `c:\omp-*.ps1` and the transcript
+`c:\v252-test.log`. Both VMs are deallocated and RDP is NSG-restricted, so nothing is exposed while
+they are off - but run `logs\vm-clear-creds.ps1` on the next start rather than leaving it.
+
 **Both have a clean snapshot this time** - `snap-vm-wstest-0{1,2}-clean-20260917`, taken before the
 first run. The retired rig only ever had one for the client, and rebuilding the Server half from a
 stock image cost a full re-provision. RDP is restricted by NSG to one IP on each, verified by
@@ -43,27 +49,29 @@ reading the rule back rather than trusting the write. **Deallocate when pausing*
 when the matrix is not needed. `logs/vm-rig-create.ps1` rebuilds the whole thing and is idempotent
 about the recorded passwords.
 
-**`v2.5.2` was cut from `main` on 2026-09-18 and is Latest**, so it is what every machine running
-the bootstrap one-liner now installs. It carries the release-version gate (G40, validated by run 15)
-**and two changes no run has covered**: G41, the `path-health.ps1` / `profile.ps1` work that landed
-after run 15 finished, and G43, the `longpaths` phase added the same day. That was a deliberate call
-rather than the alternative the previous note offered - cutting from `main` as it stood at the end
-of run 15 - so the two gates below are now owed against a *published* release, not a branch.
-**`profile.ps1` is the file whose failures break every shell**, so if a machine starts misbehaving
-after taking `v2.5.2`, look there first; `gh release delete v2.5.2` puts `v2.5.1` back as Latest.
+**`v2.5.2` was cut from `main` on 2026-09-18, is Latest, and was then validated on both SKUs by
+run 16 the same day.** It carries the release-version gate (G40, run 15), the
+`path-health.ps1` / `profile.ps1` work (G41) and the `longpaths` phase (G43). It was published
+before those last two had a run behind them, and run 16 closed that gap rather than leaving it
+open: both boxes upgraded from the published release through the documented one-liner, completed
+**10 phases**, and passed every G41 and G43 check. `v2.5.2` is now the first fully validated
+release since `v2.5.1`. **Live gate: none.**
 
-**G43 joined the queue on 2026-09-18** and shipped in `v2.5.2` unvalidated, alongside G41: a new
-`longpaths` phase that lifts the 260-character path limit, after a clone on `dev-cs-01` died at
-exit 128 half-written and looked like 4,453 local edits. Takes the phase count to **10**. Its one
-genuinely unproven branch is the registry write, because every machine tried so far already had
-`LongPathsEnabled = 1` - only a clean snapshot will exercise it.
+**The `longpaths` phase (G43) is validated, and the measurement that mattered was not the one
+planned.** A synthetic long-path repo built with git plumbing passed on the rig with *every* switch
+off, at path lengths up to 774 characters - which would have argued the whole phase was pointless.
+Re-cloning the repo that actually failed (`corpdatafabric-data`, longest tracked path 207 chars
+relative, 264 absolute) settled it on a box where `LongPathsEnabled` was already 1:
+`core.longpaths=false` gives `exit=128`, *Filename too long* on exactly the two reported files, and
+`tracked=0 dirty=3936`; `core.longpaths=true` gives `exit=0` and a clean tree. **The machine policy
+does not cover git.** The synthetic script's rig result is unexplained - same git version, same
+lengths - so do not reuse it as a gate. Details in `VALIDATION-HISTORY.md` under RUN 16.
 
 Everything before that is closed: G36-G39 by runs 11, 13 and 14 - which also covered the packages
 added the same day (zoxide, fzf, jq, Python 3.14, terraform-docs, the AWS Session Manager plugin,
 `powershell-yaml`) - and run 11 validated the manifest refresh of commit `f3aeba9` on `mrldev`.
-`v2.5.1` was the last fully validated release, and it is what `gh release delete v2.5.2` would fall
-back to. G42 is open but is a pre-existing gap in the resume design, not a regression, and does not
-block a release.
+G42 is open but is a pre-existing gap in the resume design, not a regression, and does not block a
+release.
 
 **A trap this change walked straight into, worth keeping in mind for any future edit to
 `get-latestPackages.ps1`.** That file is served from raw `main` but it runs
@@ -135,7 +143,14 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
 
 ## Open
 
-- [ ] **G41. The profile changes committed after run 15 have not run on a machine.**
+- [x] **G41. DONE 2026-09-18 by run 16** - on both SKUs, as the admin user rather than SYSTEM: the
+  deployed profile loads with **0 errors**, `path-health.ps1` lands beside it un-blocked and all
+  three of its functions are defined, `@(Test-PathHealth -Quiet).Count` is 1 and Boolean, `$HOME` is
+  redirected to `c:\projects`, and the theme is BOM-free **and parsed by oh-my-posh** - 71 ms on the
+  client via the MSIX, 26 ms on Server via the standalone exe, so G37 still holds too. The one check
+  not delivered as specified is shell start cost: what was measured is whole-process launch
+  (1.3-3.3 s), which does not isolate the profile's own overhead. Original entry below.
+  **G41. The profile changes committed after run 15 have not run on a machine.**
   `path-health.ps1` (new, deployed next to the profile), the `profile.ps1` changes that dot-source
   it and the `dev-scripts` fragment, `Assert-PathHealth` in `helper.ps1`, and the two call sites in
   `config-workstation.ps1` / `docker-ce/config-docker.ps1`. Commits `3a6ae97` and `006014d`.
@@ -164,7 +179,14 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
   - The `dev-scripts` fragment is untestable on the rig (that repo is not cloned there), so the
     only assertion available is that its absence is silent - which is the case that matters.
 
-- [ ] **G43. The `longpaths` phase has never run elevated on a machine.**
+- [x] **G43. DONE 2026-09-18 by run 16** - the phase ran elevated on one client and one Server box,
+  the registry branch executed for the first time (`LongPathsEnabled` 0 -> 1 on both), and the
+  premise was confirmed against the repo that actually failed: with the machine policy already at 1,
+  `core.longpaths=false` still gives `exit=128` / *Filename too long* / `dirty=3936`, and `true`
+  gives a clean checkout. The planned synthetic reproducer **passed with every switch off on the
+  rig** and would have argued the phase was unnecessary - see RUN 16 in `VALIDATION-HISTORY.md`.
+  Original entry below.
+  **G43. The `longpaths` phase has never run elevated on a machine.**
   New phase in `config-workstation.ps1` plus `Enable-LongPaths` in `helper.ps1`, and
   `core.longpaths = true` added to the shipped `.gitconfig`. Motivated by a real failure on
   `dev-cs-01` on 2026-09-18: a clone of a repo holding Power BI custom-visual paths of 262 and 264

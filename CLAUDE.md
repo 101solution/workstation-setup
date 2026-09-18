@@ -218,14 +218,25 @@ the new limit.
 
 **Two separate opt-ins, and neither covers the other.** `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled`
 is what Win32 callers honour — MSBuild, dotnet, Explorer, Windows PowerShell. **git ignores it
-entirely** and needs `core.longpaths`, which switches it to the Unicode long-path APIs. Setting only
-one of the two looks like it worked until the other kind of tool hits a long path.
+entirely** and needs `core.longpaths`. That is measured, not assumed: on a box with
+`LongPathsEnabled` already `1`, `git clone` of a 264-character path still dies with
+`error: ... Filename too long` / `fatal: unable to checkout working tree` unless `core.longpaths` is
+true (run 16). Setting only one of the two looks like it worked until the other kind of tool hits a
+long path.
 
 The failure it exists to prevent is not a clean error. A repo containing a path over 260 characters
 (a Power BI custom visual under a long report name is enough) aborts `git clone` with **exit 128
-after git has already written thousands of files and no index** — so the half-finished clone
-presents as a mountain of uncommitted changes, and any tooling with a don't-touch-dirty-work rule
-then refuses to go near it. The symptom points at local edits, not at the clone.
+after git has already written thousands of files and no index** — measured on the real repo as
+`exit=128 tracked=0 dirty=3936`. So the half-finished clone presents as a mountain of uncommitted
+changes, and any tooling with a don't-touch-dirty-work rule then refuses to go near it. The symptom
+points at local edits, not at the clone.
+
+**Do not test this with a synthetic repo.** The obvious reproducer — build a deep path with
+`hash-object` / `update-index --cacheinfo` / `write-tree`, then clone it — **passed on the test rig
+with both opt-ins off, at path lengths up to 774 characters**, and would have argued this phase was
+pointless. The same script fails at 294 characters on a developer box with the same git version. The
+discrepancy is unexplained. The gate that works is re-cloning a repo that genuinely has the long
+paths, into a prefix long enough to reproduce the absolute length.
 
 `core.longpaths` is written to git's **system** scope, so it applies to accounts setup never ran
 for; the shipped `.gitconfig` also carries it, which covers the setup user if a Git reinstall
@@ -421,8 +432,7 @@ gh release create v2.x.y --verify-tag --title "..." --notes-file notes.md
 
 Publishing is the step with real blast radius: the new release immediately becomes what every
 machine running the bootstrap one-liner installs. `gh release delete v2.x.y` reverts to the previous
-one if needed. Current release: **v2.5.2** (2026-09-18) — the first release carrying the
-release-version gate, and the first to ship changes (G41, G43) that no real-machine run has
-covered; `TODO.md` says what is owed.
+one if needed. Current release: **v2.5.2** (2026-09-18) — the release-version gate, PATH health and
+the `longpaths` phase, validated on both SKUs by run 16 the same day.
 
 The README's role table is hand-maintained; update it when adding a role or materially changing a manifest.
