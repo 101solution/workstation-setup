@@ -421,6 +421,8 @@ gh release create v2.x.y --verify-tag --title "..." --notes-file notes.md
 
 Publishing is the step with real blast radius: the new release immediately becomes what every
 machine running the bootstrap one-liner installs. `gh release delete v2.x.y` reverts to the previous
-one if needed. Current release: **v2.5.1** (2026-09-16).
+one if needed. Current release: **v2.5.2** (2026-09-18) — the first release carrying the
+release-version gate, and the first to ship changes (G41, G43) that no real-machine run has
+covered; `TODO.md` says what is owed.
 
 The README's role table is hand-maintained; update it when adding a role or materially changing a manifest.

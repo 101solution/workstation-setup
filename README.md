@@ -38,11 +38,11 @@ land. This works even for a machine set up before version tracking existed: no r
 counts as a mismatch. Expect roughly the time of a fresh run minus the reboot — WSL2 is already
 enabled, so there is none.
 
-**This requires the Latest release to be `v2.5.2` or newer**, since the mismatch is detected by the
-release's own `config-workstation.ps1`. While Latest is older than that, the one-liner cannot detect
-anything, and it will say so rather than pretend — but you then have to redo the phases yourself with
-`-force`. Without it the run finds its saved progress, skips all nine phases in about a second and
-reports success having installed nothing:
+This needs the Latest release to be `v2.5.2` or newer, since the mismatch is detected by the
+release's own `config-workstation.ps1`. `v2.5.2` is Latest, so the one-liner handles it. On an older
+release the one-liner cannot detect anything — it says so rather than pretending, and you then redo
+the phases yourself with `-force`. Without it the run finds its saved progress, skips every phase in
+about a second and reports success having installed nothing:
 
 ```powershell
 powershell.exe -executionpolicy bypass -file c:\config\workstation\config-workstation.ps1 -role mrldev -force

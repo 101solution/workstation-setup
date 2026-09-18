@@ -13,12 +13,13 @@ daemon printing the hello-world banner and the Linux daemon reporting `os=linux`
 a container to `exitCode=0`. Getting there took **nine bugs that only a real machine exposed**
 (G23-G31); every one passed the parser, JSON and unit checks beforehand.
 
-**Released as `v2.5.1` on 2026-09-16** (commit `1f38645`), published as a GitHub *Release*, not just
-a tag - `get-latestPackages.ps1` queries `/releases` and filters non-draft/non-prerelease, so a bare
-tag would reach nobody. It is "Latest", so every new machine running the bootstrap one-liner
-installs it. `v2.5.1` carries the theme BOM fix (G38), the Server prompt-speed fix (G37), the
-installer staging fix (G39) and the new shell/CLI tools; `v2.5.0` went out three hours earlier the
-same day with the manifest refresh. The last breaking release was **`v2.4.0`**: `-role runner`,
+**Released as `v2.5.2` on 2026-09-18**, published as a GitHub *Release*, not just a tag -
+`get-latestPackages.ps1` queries `/releases` and filters non-draft/non-prerelease, so a bare tag
+would reach nobody. It is "Latest", so every new machine running the bootstrap one-liner installs
+it; what it carries, and what that costs, is in the live-gate note below. `v2.5.1` (2026-09-16,
+commit `1f38645`) carried the theme BOM fix (G38), the Server prompt-speed fix (G37), the installer
+staging fix (G39) and the new shell/CLI tools; `v2.5.0` went out three hours earlier the same day
+with the manifest refresh. The last breaking release was **`v2.4.0`**: `-role runner`,
 `-role ce-corp`, `-role ce-free`, `containers/` and `-installStax2AWS` are all gone.
 
 **Server 2025 is now part of the matrix.** Run 12 (2026-09-16) was the first Server-SKU run ever:
@@ -42,14 +43,16 @@ reading the rule back rather than trusting the write. **Deallocate when pausing*
 when the matrix is not needed. `logs/vm-rig-create.ps1` rebuilds the whole thing and is idempotent
 about the recorded passwords.
 
-**Live gate: G41, and it is a small one.** G40 passed on 2026-09-17 (run 15, one client and one
-Server), so the release-version gate is validated and **`v2.5.2` is ready to cut**. The catch is
-that the profile work landed *after* the run finished, so a release cut from `main` right now would
-ship `path-health.ps1` and the `profile.ps1` changes unvalidated - and `profile.ps1` is the file
-whose failures break every shell. Two honest options: cut `v2.5.2` from `main` as it stood at the
-end of run 15, or validate G41 on the rig (which is still up) and ship both together.
+**`v2.5.2` was cut from `main` on 2026-09-18 and is Latest**, so it is what every machine running
+the bootstrap one-liner now installs. It carries the release-version gate (G40, validated by run 15)
+**and two changes no run has covered**: G41, the `path-health.ps1` / `profile.ps1` work that landed
+after run 15 finished, and G43, the `longpaths` phase added the same day. That was a deliberate call
+rather than the alternative the previous note offered - cutting from `main` as it stood at the end
+of run 15 - so the two gates below are now owed against a *published* release, not a branch.
+**`profile.ps1` is the file whose failures break every shell**, so if a machine starts misbehaving
+after taking `v2.5.2`, look there first; `gh release delete v2.5.2` puts `v2.5.1` back as Latest.
 
-**G43 joined the queue on 2026-09-18**, and it rides along with whatever run clears G41: a new
+**G43 joined the queue on 2026-09-18** and shipped in `v2.5.2` unvalidated, alongside G41: a new
 `longpaths` phase that lifts the 260-character path limit, after a clone on `dev-cs-01` died at
 exit 128 half-written and looked like 4,453 local edits. Takes the phase count to **10**. Its one
 genuinely unproven branch is the registry write, because every machine tried so far already had
@@ -58,8 +61,9 @@ genuinely unproven branch is the registry write, because every machine tried so 
 Everything before that is closed: G36-G39 by runs 11, 13 and 14 - which also covered the packages
 added the same day (zoxide, fzf, jq, Python 3.14, terraform-docs, the AWS Session Manager plugin,
 `powershell-yaml`) - and run 11 validated the manifest refresh of commit `f3aeba9` on `mrldev`.
-`v2.5.1` remains Latest and is fully validated. G42 is open but is a pre-existing gap in the resume
-design, not a regression, and does not block a release.
+`v2.5.1` was the last fully validated release, and it is what `gh release delete v2.5.2` would fall
+back to. G42 is open but is a pre-existing gap in the resume design, not a regression, and does not
+block a release.
 
 **A trap this change walked straight into, worth keeping in mind for any future edit to
 `get-latestPackages.ps1`.** That file is served from raw `main` but it runs
