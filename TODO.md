@@ -1,8 +1,8 @@
 # Repo Fix Backlog
 
-Open work only. Closed items — the 2026-09-11 audit (1-22) and the unattended-setup goal
-(G1-G40, including the nine real-machine bugs G23-G31) — are in
-[`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md), with their numbering intact.
+Open work only — and as of 2026-09-18 there is none. Closed items — the 2026-09-11 audit (1-22) and
+the unattended-setup goal (G1-G43, including the nine real-machine bugs G23-G31 and the dropped
+G42) — are in [`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md), with their numbering intact.
 
 ## Handover — start here (updated 2026-09-17)
 
@@ -71,8 +71,9 @@ lengths - so do not reuse it as a gate. Details in `VALIDATION-HISTORY.md` under
 Everything before that is closed: G36-G39 by runs 11, 13 and 14 - which also covered the packages
 added the same day (zoxide, fzf, jq, Python 3.14, terraform-docs, the AWS Session Manager plugin,
 `powershell-yaml`) - and run 11 validated the manifest refresh of commit `f3aeba9` on `mrldev`.
-G42 is open but is a pre-existing gap in the resume design, not a regression, and does not block a
-release.
+G42 was dropped from the backlog on 2026-09-18 on request, unfixed - a pre-existing gap in the
+resume design, not a regression, and it never blocked a release. The evidence and a cheaper fix than
+the one it proposed are kept in `VALIDATION-HISTORY.md`. **Nothing is open.**
 
 **A trap this change walked straight into, worth keeping in mind for any future edit to
 `get-latestPackages.ps1`.** That file is served from raw `main` but it runs
@@ -215,24 +216,6 @@ end with the Claude co-author line. Docs to keep in sync: `README.md` (users), `
   - **The phase is idempotent**: a second run logs already-enabled and does not fail.
   - **Phase count is now 10, not 9.** Confirm the state file records `longpaths` and that a resume
     after the reboot still skips it.
-
-- [ ] **G42. A setup process that dies between reboot gates arms nothing and reports nothing.**
-  Found by run 15 on the Server box: the `winget` phase stopped right after
-  *"Installing or upgrading GoLang.Go..."* and the machine sat for ~60 minutes with **no**
-  `winget.exe`, `msiexec.exe` or setup `powershell.exe` running. Not a hang - the process was gone.
-  State was left at `phases=1 runs=1 reboots=0` with nothing able to continue it, indefinitely.
-
-  **The gap is structural, not incidental.** Every resume path in `helper.ps1` hangs off
-  `Request-Reboot`; a run that dies *between* reboot gates registers no task and leaves no marker,
-  so a dead run is indistinguishable from a slow one forever. Same family as G18 (a failed phase
-  recorded as complete) but worse, because there is no state to inspect. Re-arming recovered
-  cleanly, so the phase design *does* recover - it has no way to **notice**.
-
-  Cause not established. The client box did identical work fine, so it is not the manifest; the
-  leading suspicion is the `-LogonType Interactive` task's process tree dying with its autologon
-  session. Worth reproducing before designing a fix - and note the fix is a watchdog or a
-  heartbeat in the state file, which is new machinery, so do not bolt it on without a run.
-  Do not assume `GoLang.Go` is implicated: it was simply where the log stopped.
 
 - [x] **G40. DONE 2026-09-17 by run 15** - all four gate checks passed on a rebuilt two-SKU rig,
   and the guard's negative branch was validated for free by phase 1 declining to forward
