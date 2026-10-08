@@ -49,8 +49,15 @@ in the repo root.
 One difference from the workstation script: this one has **no release-version tracking**, because
 `get-latestPackages.ps1` never invokes it and so there is no tag to compare. Its phases are skipped
 whenever they are already recorded as complete, so **to re-apply a newer release of the Docker CE
-scripts you must pass `-force`** — re-running the plain command will report success without doing
-anything.
+scripts after changes to their orchestration logic, pass `-force`**. Unchanged inputs preserve
+completed phases; the input tracking below automatically handles version and installer changes.
+
+Changes to `-dockerVersion`, daemon configuration, the Linux installer, or the selected distro
+invalidate affected phases automatically. Windows setup compares installed and requested versions,
+validates downloaded binaries before replacing them, stops the service for replacement, and checks
+the running daemon's OS and version. Linux installer failures fail the phase even when an older
+daemon remains reachable. User environment, WSL installation, and keepalive progress are recorded
+per Windows user. `-force` is omitted from reboot continuation.
 
 ## Verify
 

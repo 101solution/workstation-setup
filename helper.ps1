@@ -238,7 +238,13 @@ Function Install-WinGetPackage {
     if ($overrideParameters -ne "") {
         $arguments += @('--override', $overrideParameters)
     }
-    $output = & $winget @arguments 2>&1
+    # PowerShell 5.1 wraps redirected native stderr in error records; inspect exit codes ourselves.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & $winget @arguments 2>&1
+    }
+    finally { $ErrorActionPreference = $previousPreference }
     $code = '0x{0:X8}' -f ($LASTEXITCODE -band 0xFFFFFFFF)
 
     # https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
@@ -247,7 +253,7 @@ Function Install-WinGetPackage {
         '0x8A15002B' { Write-SetupLog "  $packageId is already up to date." }                 # PACKAGE_ALREADY_INSTALLED / no upgrade available
         '0x8A150061' { Write-SetupLog "  $packageId is already up to date (no applicable update)." } # UPDATE_NOT_APPLICABLE
         '0x8A15010D' { Write-SetupLog "  $packageId is already installed." }                  # INSTALL_ALREADY_INSTALLED
-        '0x8A150014' { Write-Warning "  $packageId was not found in source '$source'; check the id in the manifest." } # NO_APPLICATIONS_FOUND
+        '0x8A150014' { Write-Warning "$packageId was not found in source '$source'; skipping this unavailable package." }
         '0x8A15008E' { Write-SetupLog "  $packageId is installed via a different technology (e.g. Store vs MSI); leaving the existing install alone." } # INSTALL_TECHNOLOGY_MISMATCH
         { $_ -in '0x8A150109', '0x8A15010A' } {                                                # INSTALL_REBOOT_REQUIRED_TO_FINISH / _FOR_INSTALL
             Write-SetupLog "  $packageId installed; its installer requires a restart, folded into the single reboot."
@@ -256,6 +262,7 @@ Function Install-WinGetPackage {
         default {
             Write-Warning "  winget exited with $code for $packageId. Last output:"
             @($output | Where-Object { "$_".Trim() } | Select-Object -Last 5) | ForEach-Object { Write-SetupLog "    $_" }
+            throw "winget failed for $packageId with $code."
         }
     }
 }
@@ -314,6 +321,201 @@ Function Save-Utf8NoBom {
         [Parameter(Mandatory)] [AllowEmptyString()] [string] $Content
     )
     [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+Function Invoke-SetupNative {
+    <# Capture streams outside PowerShell's native redirection and quote Windows arguments exactly. #>
+    param([string] $FilePath, [string[]] $Arguments)
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = (Get-Command $FilePath -CommandType Application -ErrorAction Stop).Source
+    $quoted = foreach ($argument in $Arguments) {
+        # CommandLineToArgvW: double backslashes preceding quotes and the closing delimiter.
+        '"' + ([regex]::Replace([regex]::Replace($argument, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1')) + '"'
+    }
+    $info.Arguments = $quoted -join ' '
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $info.StandardOutputEncoding = [Console]::OutputEncoding
+    $info.StandardErrorEncoding = [Console]::OutputEncoding
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $info
+    try {
+        $null = $process.Start()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Output = @($stdoutTask.Result -split '\r?\n' | Where-Object { $_ -ne '' })
+            Diagnostics = @($stderrTask.Result -split '\r?\n' | Where-Object { $_ -ne '' })
+        }
+    }
+    finally { $process.Dispose() }
+}
+
+Function Set-SetupExecutionPolicy {
+    try { Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop }
+    catch {
+        if ($_.FullyQualifiedErrorId -notmatch '^ExecutionPolicyOverride') { throw }
+        Write-Warning "Execution policy is overridden by Process or Group Policy; effective policy: $(Get-ExecutionPolicy)."
+    }
+}
+
+Function Initialize-SetupPackageSources {
+    $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+        Where-Object { $_.Version -ge [version]'2.8.5.201' } | Select-Object -First 1
+    if (-not $provider) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction Stop | Out-Null }
+    $source = Get-PackageSource -ProviderName NuGet -Name nugetRepository -ErrorAction SilentlyContinue
+    if (-not $source) {
+        Register-PackageSource -ProviderName NuGet -Name nugetRepository -Location https://www.nuget.org/api/v2 -Force -ErrorAction Stop | Out-Null
+    }
+}
+
+Function Update-SetupWslRuntime {
+    $result = Invoke-SetupNative -FilePath wsl.exe -Arguments @('--update')
+    if ($result.ExitCode -ne 0) { Write-Warning "WSL runtime update failed (exit $($result.ExitCode)); continuing with installed runtime." }
+}
+
+Function Backup-SetupFile {
+    param([string] $Path, [AllowEmptyString()] [string] $NewContent)
+    if (Test-Path -LiteralPath $Path) {
+        if ($PSBoundParameters.ContainsKey('NewContent') -and [IO.File]::ReadAllText($Path) -eq $NewContent) { return }
+        Copy-Item -LiteralPath $Path -Destination "$Path.workstation-backup-$([guid]::NewGuid().ToString('N'))" -ErrorAction Stop
+    }
+}
+
+Function Set-ManagedProfileLoader {
+    param([string] $Path, [string] $LegacyContent = '', [string[]] $LegacyProfiles = @())
+    $begin = '# BEGIN workstation-setup'
+    $end = '# END workstation-setup'
+    $block = @'
+# BEGIN workstation-setup
+$workstationProfile = Join-Path $PSScriptRoot 'workstation-profile.ps1'
+if (Test-Path -LiteralPath $workstationProfile) { . $workstationProfile }
+# END workstation-setup
+'@
+    $existing = if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) } else { '' }
+    $original = $existing
+    # Migrate an unchanged profile previously copied by setup, avoiding duplicate initialization.
+    $oldFolder = if ($existing -match '(?m)^Set-Variable HOME "([^"]+)" -Force') { $Matches[1] } else { '' }
+    $candidates = @($LegacyContent)
+    foreach ($legacy in $LegacyProfiles) {
+        $template = [IO.File]::ReadAllText($legacy)
+        if ($oldFolder) { $candidates += $template.Replace('#workFolder#', $oldFolder) }
+    }
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        $normalized = ($existing -replace '\r\n', "`n").TrimEnd()
+        $prefix = ($candidate -replace '\r\n', "`n").TrimEnd()
+        if ($normalized -eq $prefix -or $normalized.StartsWith($prefix + "`n")) {
+            $existing = $normalized.Substring($prefix.Length).TrimStart("`r", "`n")
+            break
+        }
+    }
+    $pattern = '(?ms)^' + [regex]::Escape($begin) + '\r?\n.*?^' + [regex]::Escape($end) + '(?:\r?\n|$)'
+    $content = [regex]::Replace($existing, $pattern, '').TrimEnd() + [Environment]::NewLine + $block + [Environment]::NewLine
+    if ($original -eq $content) { return }
+    Backup-SetupFile -Path $Path
+    [IO.File]::WriteAllText($Path, $content, (New-Object Text.UTF8Encoding($true)))
+    Unblock-File -LiteralPath $Path
+}
+
+Function Install-ManagedGitConfig {
+    param([string] $Source, [string] $Destination, [string[]] $LegacyConfigs = @())
+    $managed = Join-Path (Split-Path -Parent $Destination) '.workstation.gitconfig'
+    $defaults = [IO.File]::ReadAllText($Source)
+    if (-not (Test-Path -LiteralPath $managed) -or [IO.File]::ReadAllText($managed) -ne $defaults) {
+        Backup-SetupFile -Path $managed -NewContent $defaults
+        Save-Utf8NoBom -Path $managed -Content $defaults
+    }
+    $content = if (Test-Path -LiteralPath $Destination) { [IO.File]::ReadAllText($Destination) } else { '' }
+    $original = $content
+    # Remove only unchanged historical defaults; explicit user overrides and identity survive.
+    if ($content -and $LegacyConfigs.Count) {
+        $migration = "$Destination.migration-$([guid]::NewGuid().ToString('N'))"
+        try {
+            Save-Utf8NoBom -Path $migration -Content $content
+            foreach ($legacy in $LegacyConfigs) {
+                $keys = Invoke-SetupNative -FilePath git -Arguments @('config', '--file', $legacy, '--name-only', '--list')
+                if ($keys.ExitCode -ne 0) { throw "Could not read legacy Git configuration $legacy." }
+                foreach ($key in $keys.Output | Select-Object -Unique) {
+                    $values = Invoke-SetupNative -FilePath git -Arguments @('config', '--file', $legacy, '--get-all', $key)
+                    foreach ($value in $values.Output) {
+                        $removed = Invoke-SetupNative -FilePath git -Arguments @('config', '--file', $migration, '--fixed-value', '--unset-all', $key, $value)
+                        if ($removed.ExitCode -notin 0, 5) { throw "Could not migrate Git setting $key." }
+                    }
+                }
+            }
+            $content = [IO.File]::ReadAllText($migration)
+        }
+        finally { if (Test-Path -LiteralPath $migration) { Remove-Item -LiteralPath $migration -Force } }
+    }
+    $include = "[include]`n    path = .workstation.gitconfig`n"
+    # Load defaults first: existing user settings later in the file retain precedence.
+    if ($content -notmatch '(?m)^\s*path\s*=\s*"?\.workstation\.gitconfig"?\s*$') {
+        $content = $include + $content
+    }
+    if ($content -ne $original) {
+        Backup-SetupFile -Path $Destination -NewContent $content
+        Save-Utf8NoBom -Path $Destination -Content $content
+    }
+}
+
+Function Assert-DockerEndpoint {
+    param([int] $Port, [string] $Os, [string] $Version = '')
+    $result = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/version" -TimeoutSec 15 -ErrorAction Stop
+    if ($result.Os -ne $Os) { throw "Docker on port $Port reports '$($result.Os)', expected '$Os'." }
+    if ($Version -and $result.Version -ne $Version) { throw "Docker on port $Port reports version '$($result.Version)', expected '$Version'." }
+}
+
+Function Get-DockerBinaryVersion {
+    param([string] $Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    $output = & $Path --version
+    if ($LASTEXITCODE -eq 0 -and $output -match 'version\s+([^,\s]+)') { return $Matches[1] }
+    return ''
+}
+
+Function Install-WindowsDockerBinaries {
+    param([string] $Version, [string] $Destination = 'C:\docker', [string] $ServiceName = 'docker')
+    $daemon = Join-Path $Destination 'dockerd.exe'
+    if ((Get-DockerBinaryVersion -Path $daemon) -eq $Version -and
+        (Get-DockerBinaryVersion -Path (Join-Path $Destination 'docker.exe')) -eq $Version) {
+        Write-SetupLog "  Docker $Version binaries are already installed."
+        return
+    }
+    $stagePath = Join-Path $env:TEMP "docker-stage-$([guid]::NewGuid().ToString('N'))"
+    $zipPath = "$stagePath.zip"
+    Write-SetupLog "  Downloading Docker Engine $Version ..."
+    try {
+        Invoke-WebRequest -Uri "https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip" -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $stagePath -Force -ErrorAction Stop
+        if ((Get-DockerBinaryVersion -Path (Join-Path $stagePath 'docker\dockerd.exe')) -ne $Version -or
+            (Get-DockerBinaryVersion -Path (Join-Path $stagePath 'docker\docker.exe')) -ne $Version) {
+            throw "Downloaded Docker binaries do not report requested version $Version or the client is missing."
+        }
+        if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+            Stop-Service -Name $ServiceName -ErrorAction Stop
+        }
+        if (-not (Test-Path -LiteralPath $Destination)) {
+            New-Item -Path $Destination -ItemType Directory -ErrorAction Stop | Out-Null
+        }
+        Copy-Item -Path "$stagePath\docker\*" -Destination $Destination -Force -ErrorAction Stop
+        if ((Get-DockerBinaryVersion -Path $daemon) -ne $Version -or
+            (Get-DockerBinaryVersion -Path (Join-Path $Destination 'docker.exe')) -ne $Version) { throw "Installed Docker binaries do not report version $Version." }
+    }
+    finally {
+        # Resolve and verify the staged directory stays inside TEMP before recursively removing it.
+        if (Test-Path -LiteralPath $stagePath) {
+            $resolvedStage = (Resolve-Path -LiteralPath $stagePath).Path
+            $resolvedTemp = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+            if (-not $resolvedStage.StartsWith($resolvedTemp, [StringComparison]::OrdinalIgnoreCase)) { throw 'Docker staging path escaped TEMP.' }
+            Remove-Item -LiteralPath $resolvedStage -Recurse -Force -ErrorAction Stop
+        }
+        if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force -ErrorAction Stop }
+    }
 }
 
 Function Install-OhMyPoshStandalone {
@@ -465,6 +667,7 @@ Function Get-SetupState {
         # recorded phases belong to older code and redo them. Null for a run from a git clone,
         # and null in every state file written before 2026-09-17 - both mean "unknown".
         setupVersion    = $null
+        phaseInputs     = [pscustomobject]@{}
     }
 
     $state = $null
@@ -502,10 +705,10 @@ Function Save-SetupState {
         $State
     )
     if (-not (Test-Path -LiteralPath $script:SetupStateRoot)) {
-        New-Item -Path $script:SetupStateRoot -ItemType Directory -Force | Out-Null
+        New-Item -Path $script:SetupStateRoot -ItemType Directory -Force -ErrorAction Stop | Out-Null
     }
     $State.lastRunUtc = (Get-Date).ToUniversalTime().ToString('o')
-    $State | ConvertTo-Json -Depth 10 | Out-File -LiteralPath (Get-SetupStatePath) -Encoding utf8 -Force
+    $State | ConvertTo-Json -Depth 10 | Out-File -LiteralPath (Get-SetupStatePath) -Encoding utf8 -Force -ErrorAction Stop
 }
 
 Function Clear-SetupState {
@@ -522,7 +725,46 @@ Function Test-PhaseComplete {
         [Parameter(Mandatory)] $State,
         [Parameter(Mandatory)] [string] $Phase
     )
-    return (@($State.completedPhases) -contains $Phase)
+    return (@($State.completedPhases) -contains (Get-SetupPhaseKey -Phase $Phase))
+}
+
+Function Get-SetupPhaseKey {
+    param([string] $Phase)
+    if ($Phase -in $script:SetupUserPhases) { return "$Phase@$script:SetupUserId" }
+    return $Phase
+}
+
+Function Initialize-SetupInputs {
+    <# Track inputs per phase; per-user phases retain independent progress for each account. #>
+    param(
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [hashtable] $Inputs,
+        [string[]] $UserPhases = @(),
+        [string] $UserId = ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+    )
+    $script:SetupUserPhases = $UserPhases
+    $script:SetupUserId = $UserId
+    if ($null -eq $State.PSObject.Properties['phaseInputs']) {
+        $State | Add-Member -NotePropertyName phaseInputs -NotePropertyValue ([pscustomobject]@{})
+    }
+    foreach ($phase in $Inputs.Keys) {
+        $key = Get-SetupPhaseKey -Phase $phase
+        $json = ConvertTo-Json -InputObject $Inputs[$phase] -Depth 20 -Compress
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $fingerprint = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($json)))
+        }
+        finally { $sha.Dispose() }
+        $previous = $State.phaseInputs.PSObject.Properties[$key]
+        if ($null -eq $previous -or $previous.Value -ne $fingerprint) {
+            $State.completedPhases = @($State.completedPhases | Where-Object { $_ -ne $key -and $_ -ne 'done' })
+        }
+        # Legacy unscoped progress cannot prove that this user's setup has completed.
+        if ($phase -in $UserPhases) {
+            $State.completedPhases = @($State.completedPhases | Where-Object { $_ -ne $phase })
+        }
+        $State.phaseInputs | Add-Member -NotePropertyName $key -NotePropertyValue $fingerprint -Force
+    }
 }
 
 Function Complete-Phase {
@@ -532,7 +774,7 @@ Function Complete-Phase {
         [Parameter(Mandatory)] [string] $Phase
     )
     if (-not (Test-PhaseComplete -State $State -Phase $Phase)) {
-        $State.completedPhases = @(@($State.completedPhases) + $Phase)
+        $State.completedPhases = @(@($State.completedPhases) + (Get-SetupPhaseKey -Phase $Phase))
         Save-SetupState -State $State
     }
 }
@@ -549,6 +791,17 @@ $script:rebootPending = $false
 $script:rebootReason = ''
 $script:failedPhases = @()
 $script:SetupExitCode = 0
+$script:SetupUserPhases = @()
+$script:SetupUserId = ''
+$script:rebootRequests = 0
+$script:phaseRetryRequests = 0
+$script:deferredPhases = @()
+
+Function Request-PhaseRetry {
+    param([string] $Reason)
+    $script:phaseRetryRequests++
+    Write-Warning $Reason
+}
 
 Function Request-PhaseReboot {
     <#
@@ -560,6 +813,7 @@ Function Request-PhaseReboot {
     #>
     param ([Parameter(Mandatory)] [string] $Reason)
     $script:rebootPending = $true
+    $script:rebootRequests++
     if ([string]::IsNullOrEmpty($script:rebootReason)) {
         $script:rebootReason = $Reason
     }
@@ -584,10 +838,19 @@ Function Invoke-SetupPhase {
     }
     Write-SetupLog ""
     Write-SetupLog "--- phase '$Phase': starting"
-    $rebootOwedBefore = $script:rebootPending
+    $requestsBefore = $script:rebootRequests
+    $retriesBefore = $script:phaseRetryRequests
     try {
+        # Cmdlet errors must prevent completion, even when the entry script continues other phases.
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
         & $Body
-        if ($script:rebootPending -and -not $rebootOwedBefore) {
+        if ($script:phaseRetryRequests -gt $retriesBefore) {
+            $script:deferredPhases += $Phase
+            Write-SetupLog "--- phase '$Phase': deferred; rerun when prerequisites are available"
+            return
+        }
+        if ($script:rebootRequests -gt $requestsBefore) {
             Write-SetupLog "--- phase '$Phase': deferred, needs a restart first"
             return
         }
@@ -622,6 +885,10 @@ Function Complete-Setup {
         Write-Warning "=== $Title finished with $($failed.Count) FAILED phase(s): $($failed -join ', ') ==="
         Write-SetupLog "  Fix the cause and re-run the same command; completed phases are skipped."
         $script:SetupExitCode = 1
+    }
+    elseif ($script:deferredPhases.Count -gt 0) {
+        Write-Warning "=== $Title finished with deferred phases: $($script:deferredPhases -join ', '). Rerun setup when prerequisites are available. ==="
+        $script:SetupExitCode = 0
     }
     else {
         Complete-Phase -State $State -Phase 'done'
@@ -690,6 +957,8 @@ Function Get-ResumeCommand {
     $arguments.Add("& '$($ScriptPath.Replace("'", "''"))'")
     foreach ($entry in $BoundParameters.GetEnumerator() | Sort-Object Key) {
         $name = $entry.Key
+        # -force resets progress once, never again during reboot continuation.
+        if ($name -eq 'force') { continue }
         $value = $entry.Value
         if ($value -is [System.Management.Automation.SwitchParameter]) {
             if ($value.IsPresent) { $arguments.Add("-$name") }
@@ -923,13 +1192,13 @@ Function Test-WslInstallSupportsFlag {
     try {
         $previousEncoding = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
-        $helpText = (& wsl.exe --help 2>&1) -join "`n"
-        [Console]::OutputEncoding = $previousEncoding
+        $helpText = (Invoke-SetupNative -FilePath wsl.exe -Arguments @('--help')).Output -join "`n"
         return ($helpText -match [regex]::Escape($Flag))
     }
     catch {
         return $false
     }
+    finally { [Console]::OutputEncoding = $previousEncoding }
 }
 
 Function Get-WslDistroState {
@@ -942,14 +1211,14 @@ Function Get-WslDistroState {
     try {
         $previousEncoding = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
-        $output = (& wsl.exe --list --quiet 2>&1) -join "`n"
-        [Console]::OutputEncoding = $previousEncoding
-        if ($LASTEXITCODE -ne 0) { return "" }
-        return $output
+        $result = Invoke-SetupNative -FilePath wsl.exe -Arguments @('--list', '--quiet')
+        if ($result.ExitCode -ne 0) { return "" }
+        return ($result.Output -join "`n")
     }
     catch {
         return ""
     }
+    finally { [Console]::OutputEncoding = $previousEncoding }
 }
 
 Function Test-WslDistroRegistered {
@@ -1087,7 +1356,7 @@ Function Initialize-WslUser {
             Runs as root via --user root so the distro's interactive OOBE never executes. The user
             gets passwordless sudo because the Docker CE and systemd scripts in this repo are full
             of unattended `sudo` calls that would otherwise block on a password prompt. systemd is
-            switched on in /etc/wsl.conf since docker-ce/linux/install-docker-ce.sh drives systemctl.
+            switched on in /etc/wsl.conf since docker-ce/install-docker-ce.sh drives systemctl.
     #>
     [CmdletBinding()]
     param (
@@ -1139,9 +1408,10 @@ echo "provisioned $LINUX_USER"
     # wsl.exe passes the command line through the distro's shell, which treats backslashes as
     # escapes: 'C:\Users\x' arrived as 'C:Usersx' on the test VM. wslpath accepts forward slashes.
     $windowsPathForShell = $scriptPath -replace '\\', '/'
-    $wslPathOutput = (& wsl.exe --distribution $DistroName --user root -- wslpath -a $windowsPathForShell 2>&1 | ForEach-Object { "$_" }) -join ' '
+    $pathResult = Invoke-SetupNative -FilePath wsl.exe -Arguments @('--distribution', $DistroName, '--user', 'root', '--', 'wslpath', '-a', $windowsPathForShell)
+    $wslPathOutput = $pathResult.Output -join ' '
     $wslScriptPath = $wslPathOutput.Trim()
-    $wslPathExit = $LASTEXITCODE
+    $wslPathExit = $pathResult.ExitCode
     if ($wslPathExit -ne 0 -or $wslScriptPath -notmatch '^/') {
         Write-Warning "Could not translate $scriptPath into a WSL path (wslpath exit ${wslPathExit}: '$wslPathOutput'); skipping user provisioning."
         return $false
