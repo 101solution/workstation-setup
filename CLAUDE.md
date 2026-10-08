@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Automates Windows workstation setup and Docker-without-Docker-Desktop configuration, driven by
 role-based JSON package manifests installed via WinGet and PSGallery.
 
-There is no build, lint, or test. Every change is validated by running the script as Administrator
+There is no build or configured linter. `scripts/verify.ps1` runs syntax, manifest, and regression
+checks; GitHub Actions also runs regressions under Windows PowerShell 5.1 and validates Bash.
+Every installation change is additionally validated by running the script as Administrator
 on a real (preferably throwaway) Windows machine and reading the transcript log. `TODO.md` holds
 open work; `VALIDATION-HISTORY.md` is the record of what has and has not been validated that way.
 As of **2026-09-14 (run 7)** both entry points have passed end to end from a clean Azure Windows 11 Enterprise 24H2
@@ -52,6 +54,13 @@ powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
 ```
 
 ## Unattended execution and reboot resume
+
+Phase progress now uses `phaseInputs` fingerprints and user SID keys for per-user phases.
+Role, manifests, work-folder settings, Git identity arguments, and Docker version/installer inputs
+invalidate affected phases. `Get-ResumeCommand` excludes `-force` so reboot continuation keeps
+progress. The phase runner uses terminating cmdlet errors, and failed WinGet packages are aggregated
+after attempting the remaining packages. Failed Linux installers are rejected by exit code;
+daemon identity/version is checked through the HTTP API. See `tests/` for isolated regressions.
 
 Both config scripts are structured as named **phases**, run through `Invoke-SetupPhase` from
 `helper.ps1`. Each completed phase is appended to a state file under
@@ -148,7 +157,7 @@ Store WSL 2.7, which is what silently broke this on the test VM) and falls back 
 launcher's `install --root`. `Initialize-WslUser` then creates the user entirely from the Windows
 side via `wsl --user root`, giving it **passwordless sudo** (the repo's Docker CE scripts are full
 of unattended `sudo` calls) and writing `/etc/wsl.conf` with `systemd=true` (required by
-`docker-ce/linux/install-docker-ce.sh`, which drives `systemctl`).
+`docker-ce/install-docker-ce.sh`, which drives `systemctl`).
 
 ## Verifying on a real machine
 
@@ -305,7 +314,7 @@ invoking user). The old `ContainerBootstrap` task is gone entirely, along with t
 
 `Install-WinGetPackage` is a single `winget install` call whose outcome is read from winget's
 documented **return codes**, not its text: `0` installed/upgraded, `0x8A15002B` / `0x8A150061` /
-`0x8A15010D` already current, `0x8A150014` id not found in the source (warning), and
+`0x8A15010D` already current, `0x8A150014` id not found in the source (failure), and
 `0x8A150109` / `0x8A15010A` installer needs a restart, which is folded into the single reboot via
 `Request-PhaseReboot`. `winget install` upgrades an installed package itself when the source has a
 newer version, so the former `winget list` → column parser → install-or-upgrade dance
@@ -316,7 +325,9 @@ newer version, so the former `winget list` → column parser → install-or-upgr
 The second half of `config-workstation.ps1` is a series of copies, each with a transform that must
 be preserved when editing the source file:
 
-- `profile.ps1` → `$PROFILE.CurrentUserAllHosts` with `WindowsPowerShell` rewritten to `Powershell`
+- `profile.ps1` → `workstation-profile.ps1` next to `$PROFILE.CurrentUserAllHosts`, with
+  `WindowsPowerShell` rewritten to `Powershell`. A managed loader keeps custom profile content;
+  unchanged legacy copies are migrated, and changed files are backed up.
   — i.e. the PowerShell 7 profile only, never 5.1. Copied with the same `#workFolder#` token
   substitution as the theme, because `profile.ps1` force-overrides `$HOME` and the FileSystem
   provider home to the work folder. Keep that token if you edit the profile.
@@ -347,7 +358,8 @@ be preserved when editing the source file:
   the functions load; without it the profile reports 0 errors and everything else still works.
   `Unblock-File` is as important as the copy — a downloaded release zip carries the mark-of-the-web,
   and a blocked script makes every shell start with a security prompt.
-- `.gitconfig` → `$env:UserProfile`, then `-gitUser`/`-gitEmail` applied via `git config --global`.
+- `.gitconfig` → `$env:UserProfile/.workstation.gitconfig`, included before existing user settings
+  in `.gitconfig`, then `-gitUser`/`-gitEmail` applied via `git config --global`.
   It carries `core.longpaths = true`, which the `longpaths` phase also writes to git's system scope —
   see "Long paths" below for why both.
 - `CaskaydiaCoveNerdFontMono-Regular.ttf` → `C:\Windows\Fonts` plus a font registry entry. The

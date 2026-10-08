@@ -1,6 +1,15 @@
 # Repo Fix Backlog
 
-Open work only — and as of 2026-09-18 there is none. Closed items — the 2026-09-11 audit (1-22) and
+## Reliability branch validation gate (2026-10-08)
+
+Validate `fix/setup-reliability` on disposable Windows 11 Enterprise 24H2 and Windows Server
+2025 machines before release: fresh setup and reboot resume with `-force`; failed package retry;
+role and work-folder changes; a second user's profile, packages, and WSL; preserved Git identity
+and custom profile settings; Windows Docker version replacement; and Linux installer failure
+with an existing daemon. Confirm daemon identity/version through the HTTP API and run containers
+on both daemons. Local regression checks passed; no end-to-end run has been performed for this branch.
+
+The reliability branch gate above is open. Closed items — the 2026-09-11 audit (1-22) and
 the unattended-setup goal (G1-G43, including the nine real-machine bugs G23-G31) — are in
 [`VALIDATION-HISTORY.md`](VALIDATION-HISTORY.md), with their numbering intact.
 

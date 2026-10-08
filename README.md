@@ -30,6 +30,11 @@ Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstatio
 
 Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask who you are.
 
+On existing workstations, setup preserves Git identity and custom settings. Defaults are loaded
+through `.workstation.gitconfig`, with existing user settings taking precedence. The PowerShell
+profile loads a managed `workstation-profile.ps1` fragment while keeping custom profile content.
+Profile and Git configuration files receive adjacent `.workstation-backup-*` copies before updates.
+
 ### Updating a machine that is already set up
 
 Run the same one-liner again. It downloads whatever release is now Latest, notices that this machine
@@ -97,6 +102,12 @@ Setup runs as a series of named phases. Each completed phase is recorded in
 `%ProgramData%\workstation-setup\setup-state.json`, so **re-running the same command is always safe**:
 finished work is skipped and only what is left runs. A phase that fails is logged and retried on the
 next run rather than aborting the build.
+
+User configuration, package installation, and WSL registration progress is tracked per Windows
+user SID. Role, manifest, and configuration changes invalidate affected phases automatically.
+Older state files rerun affected phases once. `-force` resets only the initial run; reboot
+continuation keeps newly recorded progress. Required cmdlet and package failures produce exit
+code 1 and leave failed phases retryable.
 
 Skipping applies to *resuming an interrupted setup*, not to installing a newer release. The state
 file also records the release tag it was set up by, so when the one-liner fetches a newer release
@@ -202,3 +213,13 @@ PowerShell cannot complete on its own. Prompt and editing setup are inspired by:
 - [You should be customizing your PowerShell Prompt with PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
 
 ![Windows Terminal](win-term.png)
+
+## Contributor checks
+
+Run `pwsh -NoProfile -File .\scripts\verify.ps1` for PowerShell parsing, JSON/manifest validation,
+and regression tests. Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\setup-regression.ps1`
+for Windows PowerShell 5.1 compatibility. With Bash available, run
+`bash -n docker-ce/install-docker-ce.sh` and `bash tests/docker-installer.sh`.
+GitHub Actions runs these checks on Windows and Linux. Tests use disposable files and mocked
+installers. Installation changes still require end-to-end validation on Windows 11 Enterprise
+24H2 and Windows Server 2025, including retries and reboot resume.

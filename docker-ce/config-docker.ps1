@@ -17,9 +17,9 @@
     WHY BARE `docker` NEEDS A LOGON TASK
     The Linux daemon is reachable from Windows only while the WSL distro runs: the relayed
     127.0.0.1:2375 port exists only then, and a Windows-side TCP connect does NOT start the distro.
-    install-docker-ce.sh restarts WSL, and WSL2 stops idle distros anyway, so `docker ps` would fail
+    WSL2 stops idle distros, so `docker ps` would fail
     after every reboot. The wsl-autostart phase registers an at-logon task running
-    `wsl -d <distro> -- /bin/true`, which is enough to bring it up.
+    `conhost --headless wsl.exe --distribution <distro> -- sleep infinity` to keep it running.
 
     .EXAMPLE
         .\config-docker.ps1
@@ -88,6 +88,13 @@ if ($force) {
 }
 
 $state = Get-SetupState
+Initialize-SetupInputs -State $state -UserPhases @('environment', 'docker-linux', 'wsl-autostart') -Inputs @{
+    'containers-feature' = 'containers-hyperv-v1'
+    environment = 'docker-environment-v1'
+    'docker-windows' = [ordered]@{ version = $dockerVersion; config = (Get-FileHash "$PSScriptRoot\daemon.json").Hash }
+    'docker-linux' = [ordered]@{ distro = $distroName; installer = (Get-FileHash "$PSScriptRoot\install-docker-ce.sh").Hash }
+    'wsl-autostart' = [ordered]@{ distro = $distroName; task = $autostartTaskName }
+}
 $state.runCount = [int]$state.runCount + 1
 Save-SetupState -State $state
 
@@ -146,19 +153,7 @@ Function Install-WindowsDocker {
             is registered several steps before daemon.json and the 'win' context exist, so one
             up-front check made a part-failed install look complete on the retry (G25).
     #>
-    if (-not (Test-Path -LiteralPath 'C:\docker\dockerd.exe')) {
-        $zipPath = Join-Path $env:TEMP "docker-$dockerVersion.zip"
-        Write-SetupLog "  Downloading Docker Engine $dockerVersion ..."
-        curl.exe -o $zipPath -L "https://download.docker.com/win/static/stable/x86_64/docker-$dockerVersion.zip"
-        if (-not (Test-Path -LiteralPath $zipPath)) {
-            throw "Docker Engine download failed; $zipPath was not created."
-        }
-        Expand-Archive -LiteralPath $zipPath -DestinationPath C:\ -Force
-        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-    }
-    else {
-        Write-SetupLog "  C:\docker\dockerd.exe is already present."
-    }
+    Install-WindowsDockerBinaries -Version $dockerVersion -ServiceName $script:DockerServiceName
 
     # Append to the MACHINE Path, never to $env:Path: the process value is Machine and User merged,
     # so writing it back bakes the running user's private directories (WindowsApps, WinGet\Links,
@@ -177,7 +172,8 @@ Function Install-WindowsDocker {
 
     if (-not (Test-DockerService)) {
         Write-SetupLog "  Registering the docker service ..."
-        dockerd --register-service --service-name $script:DockerServiceName
+        & 'C:\docker\dockerd.exe' --register-service --service-name $script:DockerServiceName
+        if ($LASTEXITCODE -ne 0) { throw 'Docker service registration failed.' }
     }
 
     # dockerd creates its data directories on first run but NOT config\. Docker 20.10 did, which is
@@ -200,6 +196,7 @@ Function Install-WindowsDocker {
 
     if ((docker context ls --format '{{.Name}}' 2>$null) -notcontains 'win') {
         docker context create win --docker host=tcp://127.0.0.1:2378
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the Windows Docker context.' }
     }
 
     Write-SetupLog "  Waiting for the Windows daemon on tcp://127.0.0.1:2378 ..."
@@ -211,6 +208,7 @@ Function Install-WindowsDocker {
         throw "The Windows Docker daemon did not start listening on tcp://127.0.0.1:2378."
     }
     Write-SetupLog "  Windows Docker daemon is up."
+    Assert-DockerEndpoint -Port 2378 -Os windows -Version $dockerVersion
 }
 
 Function Start-WslDistro {
@@ -319,6 +317,7 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
         throw "install-docker-ce.sh did not finish within $($installTimeout.TotalMinutes) minutes. Check 'wsl -d $distroName -- systemctl status docker' and the apt logs in the distro."
     }
     Write-SetupLog "  install-docker-ce.sh exited $($wslProcess.ExitCode)."
+    if ($wslProcess.ExitCode -ne 0) { throw "Linux Docker installer failed with exit code $($wslProcess.ExitCode)." }
 
     # Verify what the client will actually use: a TCP connect to 2375 from WINDOWS. The old check
     # ran `wsl -- docker version`, which talks to the unix socket inside the distro and - worse -
@@ -329,6 +328,7 @@ Invoke-SetupPhase -Phase 'docker-linux' -Body {
         throw "The Linux Docker daemon is not reachable on tcp://127.0.0.1:2375 from Windows. Check 'wsl -d $distroName -- systemctl status docker' and that /etc/systemd/system/docker.service carries -H tcp://127.0.0.1:2375."
     }
     Write-SetupLog "Linux Docker daemon is reachable from Windows."
+    Assert-DockerEndpoint -Port 2375 -Os linux
 }
 
 # ---------------------------------------------------------------------------------------------

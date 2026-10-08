@@ -1,5 +1,14 @@
 # Validation History
 
+## Local reliability checks (2026-10-08)
+
+Branch `fix/setup-reliability` changes failure propagation, reboot arguments, per-user phase
+tracking and input invalidation, managed configuration, and Docker version replacement.
+Local checks passed PowerShell/JSON parsing, manifest validation, PowerShell 7 and Windows
+PowerShell 5.1 regression tests, Bash syntax, and a mocked Linux installer failure test.
+These are local checks only; no installation or reboot was performed on either supported SKU.
+The Windows client/Server validation gate remains open in `TODO.md`.
+
 Closed work for `workstation-setup`: the 2026-09-11 script audit (items 1-22) and the
 unattended-setup goal (G1-G35), including the nine bugs that only a real machine exposed.
 Split out of `TODO.md` on 2026-09-16 so the backlog shows only open work. **Item numbers are

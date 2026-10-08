@@ -238,7 +238,13 @@ Function Install-WinGetPackage {
     if ($overrideParameters -ne "") {
         $arguments += @('--override', $overrideParameters)
     }
-    $output = & $winget @arguments 2>&1
+    # PowerShell 5.1 wraps redirected native stderr in error records; inspect exit codes ourselves.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & $winget @arguments 2>&1
+    }
+    finally { $ErrorActionPreference = $previousPreference }
     $code = '0x{0:X8}' -f ($LASTEXITCODE -band 0xFFFFFFFF)
 
     # https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
@@ -247,7 +253,7 @@ Function Install-WinGetPackage {
         '0x8A15002B' { Write-SetupLog "  $packageId is already up to date." }                 # PACKAGE_ALREADY_INSTALLED / no upgrade available
         '0x8A150061' { Write-SetupLog "  $packageId is already up to date (no applicable update)." } # UPDATE_NOT_APPLICABLE
         '0x8A15010D' { Write-SetupLog "  $packageId is already installed." }                  # INSTALL_ALREADY_INSTALLED
-        '0x8A150014' { Write-Warning "  $packageId was not found in source '$source'; check the id in the manifest." } # NO_APPLICATIONS_FOUND
+        '0x8A150014' { throw "$packageId was not found in source '$source'; check the manifest id." }
         '0x8A15008E' { Write-SetupLog "  $packageId is installed via a different technology (e.g. Store vs MSI); leaving the existing install alone." } # INSTALL_TECHNOLOGY_MISMATCH
         { $_ -in '0x8A150109', '0x8A15010A' } {                                                # INSTALL_REBOOT_REQUIRED_TO_FINISH / _FOR_INSTALL
             Write-SetupLog "  $packageId installed; its installer requires a restart, folded into the single reboot."
@@ -256,6 +262,7 @@ Function Install-WinGetPackage {
         default {
             Write-Warning "  winget exited with $code for $packageId. Last output:"
             @($output | Where-Object { "$_".Trim() } | Select-Object -Last 5) | ForEach-Object { Write-SetupLog "    $_" }
+            throw "winget failed for $packageId with $code."
         }
     }
 }
@@ -314,6 +321,105 @@ Function Save-Utf8NoBom {
         [Parameter(Mandatory)] [AllowEmptyString()] [string] $Content
     )
     [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+Function Backup-SetupFile {
+    param([string] $Path)
+    if (Test-Path -LiteralPath $Path) {
+        Copy-Item -LiteralPath $Path -Destination "$Path.workstation-backup-$([guid]::NewGuid().ToString('N'))" -ErrorAction Stop
+    }
+}
+
+Function Set-ManagedProfileLoader {
+    param([string] $Path, [string] $LegacyContent = '')
+    $begin = '# BEGIN workstation-setup'
+    $end = '# END workstation-setup'
+    $block = @'
+# BEGIN workstation-setup
+$workstationProfile = Join-Path $PSScriptRoot 'workstation-profile.ps1'
+if (Test-Path -LiteralPath $workstationProfile) { . $workstationProfile }
+# END workstation-setup
+'@
+    $existing = if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) } else { '' }
+    $original = $existing
+    # Migrate an unchanged profile previously copied by setup, avoiding duplicate initialization.
+    if ($LegacyContent -and ($existing -replace '\r\n', "`n").Trim() -eq ($LegacyContent -replace '\r\n', "`n").Trim()) {
+        $existing = ''
+    }
+    $pattern = '(?ms)^' + [regex]::Escape($begin) + '\r?\n.*?^' + [regex]::Escape($end) + '(?:\r?\n|$)'
+    $content = [regex]::Replace($existing, $pattern, '').TrimEnd() + [Environment]::NewLine + $block + [Environment]::NewLine
+    if ($original -eq $content) { return }
+    Backup-SetupFile -Path $Path
+    [IO.File]::WriteAllText($Path, $content, (New-Object Text.UTF8Encoding($true)))
+    Unblock-File -LiteralPath $Path
+}
+
+Function Install-ManagedGitConfig {
+    param([string] $Source, [string] $Destination)
+    $managed = Join-Path (Split-Path -Parent $Destination) '.workstation.gitconfig'
+    Backup-SetupFile -Path $Destination
+    Backup-SetupFile -Path $managed
+    Copy-Item -LiteralPath $Source -Destination $managed -Force -ErrorAction Stop
+    $content = if (Test-Path -LiteralPath $Destination) { [IO.File]::ReadAllText($Destination) } else { '' }
+    $include = "[include]`n    path = .workstation.gitconfig`n"
+    # Load defaults first: existing user settings later in the file retain precedence.
+    if ($content -notmatch '(?m)^\s*path\s*=\s*"?\.workstation\.gitconfig"?\s*$') {
+        Save-Utf8NoBom -Path $Destination -Content ($include + $content)
+    }
+}
+
+Function Assert-DockerEndpoint {
+    param([int] $Port, [string] $Os, [string] $Version = '')
+    $result = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/version" -TimeoutSec 15 -ErrorAction Stop
+    if ($result.Os -ne $Os) { throw "Docker on port $Port reports '$($result.Os)', expected '$Os'." }
+    if ($Version -and $result.Version -ne $Version) { throw "Docker on port $Port reports version '$($result.Version)', expected '$Version'." }
+}
+
+Function Get-DockerBinaryVersion {
+    param([string] $Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    $output = & $Path --version
+    if ($LASTEXITCODE -eq 0 -and $output -match 'version\s+([^,\s]+)') { return $Matches[1] }
+    return ''
+}
+
+Function Install-WindowsDockerBinaries {
+    param([string] $Version, [string] $Destination = 'C:\docker', [string] $ServiceName = 'docker')
+    $daemon = Join-Path $Destination 'dockerd.exe'
+    if ((Get-DockerBinaryVersion -Path $daemon) -eq $Version -and
+        (Test-Path -LiteralPath (Join-Path $Destination 'docker.exe'))) {
+        Write-SetupLog "  Docker $Version binaries are already installed."
+        return
+    }
+    $stagePath = Join-Path $env:TEMP "docker-stage-$([guid]::NewGuid().ToString('N'))"
+    $zipPath = "$stagePath.zip"
+    Write-SetupLog "  Downloading Docker Engine $Version ..."
+    try {
+        Invoke-WebRequest -Uri "https://download.docker.com/win/static/stable/x86_64/docker-$Version.zip" -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $stagePath -Force -ErrorAction Stop
+        if ((Get-DockerBinaryVersion -Path (Join-Path $stagePath 'docker\dockerd.exe')) -ne $Version -or
+            -not (Test-Path -LiteralPath (Join-Path $stagePath 'docker\docker.exe'))) {
+            throw "Downloaded Docker binaries do not report requested version $Version or the client is missing."
+        }
+        if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+            Stop-Service -Name $ServiceName -ErrorAction Stop
+        }
+        if (-not (Test-Path -LiteralPath $Destination)) {
+            New-Item -Path $Destination -ItemType Directory -ErrorAction Stop | Out-Null
+        }
+        Copy-Item -Path "$stagePath\docker\*" -Destination $Destination -Force -ErrorAction Stop
+        if ((Get-DockerBinaryVersion -Path $daemon) -ne $Version) { throw "Installed Docker binaries do not report version $Version." }
+    }
+    finally {
+        # Resolve and verify the staged directory stays inside TEMP before recursively removing it.
+        if (Test-Path -LiteralPath $stagePath) {
+            $resolvedStage = (Resolve-Path -LiteralPath $stagePath).Path
+            $resolvedTemp = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+            if (-not $resolvedStage.StartsWith($resolvedTemp, [StringComparison]::OrdinalIgnoreCase)) { throw 'Docker staging path escaped TEMP.' }
+            Remove-Item -LiteralPath $resolvedStage -Recurse -Force -ErrorAction Stop
+        }
+        if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force -ErrorAction Stop }
+    }
 }
 
 Function Install-OhMyPoshStandalone {
@@ -465,6 +571,7 @@ Function Get-SetupState {
         # recorded phases belong to older code and redo them. Null for a run from a git clone,
         # and null in every state file written before 2026-09-17 - both mean "unknown".
         setupVersion    = $null
+        phaseInputs     = [pscustomobject]@{}
     }
 
     $state = $null
@@ -502,10 +609,10 @@ Function Save-SetupState {
         $State
     )
     if (-not (Test-Path -LiteralPath $script:SetupStateRoot)) {
-        New-Item -Path $script:SetupStateRoot -ItemType Directory -Force | Out-Null
+        New-Item -Path $script:SetupStateRoot -ItemType Directory -Force -ErrorAction Stop | Out-Null
     }
     $State.lastRunUtc = (Get-Date).ToUniversalTime().ToString('o')
-    $State | ConvertTo-Json -Depth 10 | Out-File -LiteralPath (Get-SetupStatePath) -Encoding utf8 -Force
+    $State | ConvertTo-Json -Depth 10 | Out-File -LiteralPath (Get-SetupStatePath) -Encoding utf8 -Force -ErrorAction Stop
 }
 
 Function Clear-SetupState {
@@ -522,7 +629,46 @@ Function Test-PhaseComplete {
         [Parameter(Mandatory)] $State,
         [Parameter(Mandatory)] [string] $Phase
     )
-    return (@($State.completedPhases) -contains $Phase)
+    return (@($State.completedPhases) -contains (Get-SetupPhaseKey -Phase $Phase))
+}
+
+Function Get-SetupPhaseKey {
+    param([string] $Phase)
+    if ($Phase -in $script:SetupUserPhases) { return "$Phase@$script:SetupUserId" }
+    return $Phase
+}
+
+Function Initialize-SetupInputs {
+    <# Track inputs per phase; per-user phases retain independent progress for each account. #>
+    param(
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [hashtable] $Inputs,
+        [string[]] $UserPhases = @(),
+        [string] $UserId = ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+    )
+    $script:SetupUserPhases = $UserPhases
+    $script:SetupUserId = $UserId
+    if ($null -eq $State.PSObject.Properties['phaseInputs']) {
+        $State | Add-Member -NotePropertyName phaseInputs -NotePropertyValue ([pscustomobject]@{})
+    }
+    foreach ($phase in $Inputs.Keys) {
+        $key = Get-SetupPhaseKey -Phase $phase
+        $json = ConvertTo-Json -InputObject $Inputs[$phase] -Depth 20 -Compress
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $fingerprint = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($json)))
+        }
+        finally { $sha.Dispose() }
+        $previous = $State.phaseInputs.PSObject.Properties[$key]
+        if ($null -eq $previous -or $previous.Value -ne $fingerprint) {
+            $State.completedPhases = @($State.completedPhases | Where-Object { $_ -ne $key -and $_ -ne 'done' })
+        }
+        # Legacy unscoped progress cannot prove that this user's setup has completed.
+        if ($phase -in $UserPhases) {
+            $State.completedPhases = @($State.completedPhases | Where-Object { $_ -ne $phase })
+        }
+        $State.phaseInputs | Add-Member -NotePropertyName $key -NotePropertyValue $fingerprint -Force
+    }
 }
 
 Function Complete-Phase {
@@ -532,7 +678,7 @@ Function Complete-Phase {
         [Parameter(Mandatory)] [string] $Phase
     )
     if (-not (Test-PhaseComplete -State $State -Phase $Phase)) {
-        $State.completedPhases = @(@($State.completedPhases) + $Phase)
+        $State.completedPhases = @(@($State.completedPhases) + (Get-SetupPhaseKey -Phase $Phase))
         Save-SetupState -State $State
     }
 }
@@ -549,6 +695,9 @@ $script:rebootPending = $false
 $script:rebootReason = ''
 $script:failedPhases = @()
 $script:SetupExitCode = 0
+$script:SetupUserPhases = @()
+$script:SetupUserId = ''
+$script:rebootRequests = 0
 
 Function Request-PhaseReboot {
     <#
@@ -560,6 +709,7 @@ Function Request-PhaseReboot {
     #>
     param ([Parameter(Mandatory)] [string] $Reason)
     $script:rebootPending = $true
+    $script:rebootRequests++
     if ([string]::IsNullOrEmpty($script:rebootReason)) {
         $script:rebootReason = $Reason
     }
@@ -584,10 +734,13 @@ Function Invoke-SetupPhase {
     }
     Write-SetupLog ""
     Write-SetupLog "--- phase '$Phase': starting"
-    $rebootOwedBefore = $script:rebootPending
+    $requestsBefore = $script:rebootRequests
     try {
+        # Cmdlet errors must prevent completion, even when the entry script continues other phases.
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
         & $Body
-        if ($script:rebootPending -and -not $rebootOwedBefore) {
+        if ($script:rebootRequests -gt $requestsBefore) {
             Write-SetupLog "--- phase '$Phase': deferred, needs a restart first"
             return
         }
@@ -690,6 +843,8 @@ Function Get-ResumeCommand {
     $arguments.Add("& '$($ScriptPath.Replace("'", "''"))'")
     foreach ($entry in $BoundParameters.GetEnumerator() | Sort-Object Key) {
         $name = $entry.Key
+        # -force resets progress once, never again during reboot continuation.
+        if ($name -eq 'force') { continue }
         $value = $entry.Value
         if ($value -is [System.Management.Automation.SwitchParameter]) {
             if ($value.IsPresent) { $arguments.Add("-$name") }
@@ -1087,7 +1242,7 @@ Function Initialize-WslUser {
             Runs as root via --user root so the distro's interactive OOBE never executes. The user
             gets passwordless sudo because the Docker CE and systemd scripts in this repo are full
             of unattended `sudo` calls that would otherwise block on a password prompt. systemd is
-            switched on in /etc/wsl.conf since docker-ce/linux/install-docker-ce.sh drives systemctl.
+            switched on in /etc/wsl.conf since docker-ce/install-docker-ce.sh drives systemctl.
     #>
     [CmdletBinding()]
     param (

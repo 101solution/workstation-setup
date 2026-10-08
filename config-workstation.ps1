@@ -73,6 +73,13 @@ param (
 
 $ErrorActionPreference = 'Continue'
 
+# Validate the selected manifest before changing machine settings or saved progress.
+$packageConfigBase = Get-Content -LiteralPath "$PSScriptRoot\packages-min.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+$packageConfig = $null
+if ($role -ne 'min') {
+    $packageConfig = Get-Content -LiteralPath "$PSScriptRoot\packages-$role.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+}
+
 $logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
     New-Item -Path $logFilePath -ItemType File -Force | Out-Null
@@ -113,6 +120,17 @@ if (-not [string]::IsNullOrWhiteSpace($setupVersion)) {
 }
 
 $state.runCount = [int]$state.runCount + 1
+Initialize-SetupInputs -State $state -UserPhases @('preflight', 'winget', 'psmodules', 'shell', 'terminal', 'wsl-distro') -Inputs @{
+    preflight = 'sources-v1'
+    winget = [ordered]@{ role = $role; packages = @($packageConfigBase.winget) + @($packageConfig.winget) }
+    psmodules = @($packageConfigBase.powershellModule) + @($packageConfig.powershellModule)
+    fonts = (Get-FileHash -LiteralPath "$PSScriptRoot\CaskaydiaCoveNerdFontMono-Regular.ttf").Hash
+    longpaths = 'policy-and-git-v1'
+    'wsl-features' = $enableWSL
+    'wsl-distro' = $enableWSL
+    shell = [ordered]@{ folder = $defaultWorkFolder; gitUser = $gitUser; gitEmail = $gitEmail; profile = (Get-FileHash "$PSScriptRoot\profile.ps1").Hash; theme = (Get-FileHash "$PSScriptRoot\rudolfs-light-cs.omp.json").Hash; git = (Get-FileHash "$PSScriptRoot\.gitconfig").Hash; pathHealth = (Get-FileHash "$PSScriptRoot\path-health.ps1").Hash }
+    terminal = [ordered]@{ folder = $defaultWorkFolder; defaults = (Get-FileHash "$PSScriptRoot\terminal-default-settings.json").Hash }
+}
 Save-SetupState -State $state
 
 # Invoke-SetupPhase, Request-PhaseReboot and Invoke-RebootGate come from helper.ps1 and are shared
@@ -132,15 +150,14 @@ if (@($state.completedPhases).Count -gt 0) {
 Invoke-SetupPhase -Phase 'preflight' -Body {
     Write-SetupLog "Register NuGet source ..."
     Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 `
-        -ForceBootstrap -Force -ErrorAction SilentlyContinue | Out-Null
+        -ForceBootstrap -Force | Out-Null
 
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
 
     # Without this, Install-Module stops to confirm an untrusted repository.
     Write-SetupLog "Trusting the PSGallery repository so module installs do not prompt ..."
-    if (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue) {
-        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-    }
+    $null = Get-PSRepository -Name PSGallery -ErrorAction Stop
+    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
 
     if (Test-PendingReboot) {
         Write-Warning "Windows already has a reboot outstanding. Continuing, and folding it into the single restart later; if package installs misbehave, reboot and re-run."
@@ -148,10 +165,6 @@ Invoke-SetupPhase -Phase 'preflight' -Body {
 }
 
 Write-SetupLog "Getting package config ..."
-$packageConfigBase = Get-Content $PSScriptRoot\packages-min.json | ConvertFrom-Json
-if ($role -ne 'min') {
-    $packageConfig = Get-Content $PSScriptRoot\packages-$role.json | ConvertFrom-Json
-}
 
 # ---------------------------------------------------------------------------------------------
 # Phase: WSL optional features. Deliberately FIRST and -NoRestart, so the restart it may demand is
@@ -212,14 +225,22 @@ Invoke-SetupPhase -Phase 'winget' -Body {
         $env:TMP = $stagingTemp
         Write-SetupLog "Staging installers in $stagingTemp (a profile short name containing '~' or '.' breaks some NSIS installers)"
 
+        $packageFailures = @()
         foreach ($pack in $wingetPackages) {
-            if ($pack.override) {
-                Install-WinGetPackage -packageId $pack.id -overrideParameters $pack.override -source $pack.source
+            try {
+                if ($pack.override) {
+                    Install-WinGetPackage -packageId $pack.id -overrideParameters $pack.override -source $pack.source
+                }
+                else {
+                    Install-WinGetPackage -packageId $pack.id -source $pack.source
+                }
             }
-            else {
-                Install-WinGetPackage -packageId $pack.id -source $pack.source
+            catch {
+                $packageFailures += $pack.id
+                Write-Warning $_.Exception.Message
             }
         }
+        if ($packageFailures.Count) { throw "Packages failed: $($packageFailures -join ', ')." }
     }
     finally {
         $env:TEMP = $originalTemp
@@ -268,16 +289,21 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     if (-not $pwsh) {
         throw "pwsh.exe not found. This phase depends on the winget phase installing Microsoft.PowerShell; it will be retried once that has succeeded."
     }
-    & $pwsh.Source -command "& {Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force}" | Out-Null
+    & $pwsh.Source -NoProfile -command "& {Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop}" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not configure PowerShell execution policy.' }
 
     Write-SetupLog "Copy ps profile"
     $psProfilePath = $PROFILE.CurrentUserAllHosts -Replace "WindowsPowerShell", "Powershell"
     Write-SetupLog "Creating ps profile $psProfilePath"
-    New-Item -ItemType File -Path $psProfilePath -Force | Out-Null
-
     $profileContent = Get-Content "$PSScriptRoot/profile.ps1" -Encoding UTF8
-    $profileContent -replace "#workFolder#", $defaultWorkFolder | Out-File -LiteralPath $psProfilePath -Encoding utf8 -Force
-    Unblock-File -LiteralPath $psProfilePath
+    $profileFragment = Join-Path (Split-Path -Parent $psProfilePath) 'workstation-profile.ps1'
+    if (-not (Test-Path -LiteralPath (Split-Path -Parent $psProfilePath))) {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $psProfilePath) -Force | Out-Null
+    }
+    Backup-SetupFile -Path $profileFragment
+    $profileContent -replace "#workFolder#", $defaultWorkFolder | Out-File -LiteralPath $profileFragment -Encoding utf8 -Force
+    Unblock-File -LiteralPath $profileFragment
+    Set-ManagedProfileLoader -Path $psProfilePath -LegacyContent (($profileContent -replace "#workFolder#", $defaultWorkFolder) -join [Environment]::NewLine)
 
     # path-health.ps1 sits NEXT TO the profile, which dot-sources it via $PSScriptRoot. No token
     # substitution and no BOM concern: it is a .ps1, and under 5.1 a BOM actually helps decoding
@@ -317,17 +343,19 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     Save-Utf8NoBom -Path "$poshThemesPath\rudolfs-light-cs.omp.json" -Content $poshJson
 
     Write-SetupLog "Copy git config..."
-    Copy-Item "$PSScriptRoot/.gitconfig" -Destination $env:UserProfile -Force
+    Install-ManagedGitConfig -Source "$PSScriptRoot/.gitconfig" -Destination (Join-Path $env:UserProfile '.gitconfig')
     if (("" -ne $gitUser -or "" -ne $gitEmail) -and -not (Get-Command -Name git.exe -ErrorAction SilentlyContinue)) {
         throw "git.exe not found, so -gitUser/-gitEmail cannot be applied. This phase depends on the winget phase installing Git.Git."
     }
     if ("" -ne $gitUser) {
         Write-SetupLog "Set Git User ..."
         git config --global user.name $gitUser
+        if ($LASTEXITCODE -ne 0) { throw 'Could not set Git user.name.' }
     }
     if ("" -ne $gitEmail) {
         Write-SetupLog "Set Git User Email..."
         git config --global user.email $gitEmail
+        if ($LASTEXITCODE -ne 0) { throw 'Could not set Git user.email.' }
     }
 }
 
@@ -351,8 +379,7 @@ Invoke-SetupPhase -Phase 'terminal' -Body {
     }
 
     if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
-        Write-Warning "Windows Terminal settings file still absent; skipping terminal configuration."
-        return
+        throw 'Windows Terminal settings file still absent; retry terminal configuration after first launch.'
     }
 
     Write-SetupLog "Update Windows Terminal Settings"
@@ -393,13 +420,14 @@ Invoke-SetupPhase -Phase 'wsl-distro' -Body {
     }
     $wslCommand = Get-Command -Name wsl.exe -ErrorAction SilentlyContinue
     if (-not $wslCommand) {
-        Write-Warning "wsl.exe was not found even though the optional features are enabled; skipping WSL."
-        return
+        throw 'wsl.exe was not found even though WSL was requested.'
     }
 
     Write-SetupLog "Updating the WSL runtime ..."
     & wsl.exe --update | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'WSL runtime update failed.' }
     & wsl.exe --set-default-version 2 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not set the default WSL version to 2.' }
 
     # Both helpers return $false (with a warning) on failure. Throw so the phase is NOT recorded
     # complete and is retried next run (TODO G18: run 1 recorded a failed registration as done).

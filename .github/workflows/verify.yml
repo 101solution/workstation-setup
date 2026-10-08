@@ -1,0 +1,23 @@
+name: Verify setup scripts
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax, manifests, and PowerShell 7 regressions
+        shell: pwsh
+        run: ./scripts/verify.ps1
+      - name: Windows PowerShell 5.1 regressions
+        shell: powershell
+        run: ./tests/setup-regression.ps1
+  bash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax and installer failure handling
+        run: |
+          bash -n docker-ce/install-docker-ce.sh
+          bash tests/docker-installer.sh
