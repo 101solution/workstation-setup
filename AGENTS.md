@@ -6,7 +6,7 @@ This repository automates Windows workstation configuration. Root scripts includ
 
 ## Build, Test, and Development Commands
 
-There is no build pipeline, configured linter, or automated test suite. Run installation commands in Administrator PowerShell on a disposable machine:
+There is no build pipeline or configured linter. Run `pwsh -NoProfile -File .\scripts\verify.ps1` for syntax, manifest, and regression checks. GitHub Actions also checks PowerShell 5.1 and Bash. Run installation commands in Administrator PowerShell on a disposable machine:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\config-workstation.ps1 -role mrl

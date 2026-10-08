@@ -88,9 +88,10 @@ if ($force) {
 }
 
 $state = Get-SetupState
-Initialize-SetupInputs -State $state -UserPhases @('environment', 'docker-linux', 'wsl-autostart') -Inputs @{
+Initialize-SetupInputs -State $state -UserPhases @('environment', 'docker-context', 'docker-linux', 'wsl-autostart') -Inputs @{
     'containers-feature' = 'containers-hyperv-v1'
     environment = 'docker-environment-v1'
+    'docker-context' = 'windows-context-v1'
     'docker-windows' = [ordered]@{ version = $dockerVersion; config = (Get-FileHash "$PSScriptRoot\daemon.json").Hash }
     'docker-linux' = [ordered]@{ distro = $distroName; installer = (Get-FileHash "$PSScriptRoot\install-docker-ce.sh").Hash }
     'wsl-autostart' = [ordered]@{ distro = $distroName; task = $autostartTaskName }
@@ -194,11 +195,6 @@ Function Install-WindowsDocker {
         Start-Service -Name $script:DockerServiceName
     }
 
-    if ((docker context ls --format '{{.Name}}' 2>$null) -notcontains 'win') {
-        docker context create win --docker host=tcp://127.0.0.1:2378
-        if ($LASTEXITCODE -ne 0) { throw 'Could not create the Windows Docker context.' }
-    }
-
     Write-SetupLog "  Waiting for the Windows daemon on tcp://127.0.0.1:2378 ..."
     $deadline = (Get-Date).AddMinutes(2)
     while (-not (Test-TcpPort -Port 2378) -and (Get-Date) -lt $deadline) {
@@ -224,7 +220,8 @@ Function Start-WslDistro {
         [Parameter()] [int] $TimeoutSeconds = 90
     )
     Write-SetupLog "  Starting WSL distro '$DistroName' ..."
-    & wsl.exe --distribution $DistroName -- /bin/true 2>&1 | Out-Null
+    $started = Invoke-SetupNative -FilePath wsl.exe -Arguments @('--distribution', $DistroName, '--', '/bin/true')
+    if ($started.ExitCode -ne 0) { return $false }
     return (Wait-LinuxDockerEndpoint -TimeoutSeconds $TimeoutSeconds)
 }
 
@@ -283,6 +280,14 @@ Invoke-RebootGate -State $state -TaskName $taskName -ResumeCommand $resumeComman
 Invoke-SetupPhase -Phase 'docker-windows' -Body {
     Write-SetupLog "Configuring Docker on Windows (host) ..."
     Install-WindowsDocker
+}
+
+Invoke-SetupPhase -Phase 'docker-context' -Body {
+    $contexts = Invoke-SetupNative -FilePath 'C:\docker\docker.exe' -Arguments @('context', 'ls', '--format', '{{.Name}}')
+    if ($contexts.ExitCode -ne 0) { throw 'Could not list Docker contexts.' }
+    $operation = if ($contexts.Output -contains 'win') { 'update' } else { 'create' }
+    $context = Invoke-SetupNative -FilePath 'C:\docker\docker.exe' -Arguments @('context', $operation, 'win', '--docker', 'host=tcp://127.0.0.1:2378')
+    if ($context.ExitCode -ne 0) { throw 'Could not configure the Windows Docker context.' }
 }
 
 # ---------------------------------------------------------------------------------------------

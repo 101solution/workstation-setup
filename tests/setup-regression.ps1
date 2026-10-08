@@ -131,6 +131,52 @@ try {
     $script:archiveVersion = '29.8.0'
     Install-WindowsDockerBinaries -Version '29.8.0' -Destination $dockerDestination
     Assert-True (Test-Path -LiteralPath (Join-Path $dockerDestination 'docker.exe')) 'Partial Docker installation was not repaired.'
+    Set-Content (Join-Path $dockerDestination 'docker.exe') 'old-client'
+    Install-WindowsDockerBinaries -Version '29.8.0' -Destination $dockerDestination
+    Assert-True ((Get-DockerBinaryVersion (Join-Path $dockerDestination 'docker.exe')) -eq '29.8.0') 'Mixed-version Docker installation was not repaired.'
+
+    $beforeBackups = @(Get-ChildItem -LiteralPath $testRoot -Filter '*.workstation-backup-*').Count
+    Install-ManagedGitConfig -Source $sourcePath -Destination $gitPath
+    Assert-True (@(Get-ChildItem -LiteralPath $testRoot -Filter '*.workstation-backup-*').Count -eq $beforeBackups) 'Unchanged Git settings created redundant backups.'
+    $upgradeProfile = Join-Path $testRoot 'upgrade-profile.ps1'
+    $legacyProfile = Join-Path $repoRoot 'legacy\v2.5.2\profile.ps1'
+    $oldProfile = [IO.File]::ReadAllText($legacyProfile).Replace('#workFolder#', 'C:\old-projects')
+    Save-Utf8NoBom -Path $upgradeProfile -Content ($oldProfile + "`n`$customUpgradeSetting = 99`n")
+    Set-ManagedProfileLoader -Path $upgradeProfile -LegacyProfiles @($legacyProfile)
+    $upgraded = [IO.File]::ReadAllText($upgradeProfile)
+    Assert-True ($upgraded.Contains('$customUpgradeSetting = 99') -and -not $upgraded.Contains('Set-Variable HOME')) 'Legacy profile upgrade duplicated initialization or lost appended settings.'
+    $upgradeGit = Join-Path $testRoot 'upgrade.gitconfig'
+    $legacyGit = Join-Path $repoRoot 'legacy\v2.5.2\.gitconfig'
+    Save-Utf8NoBom -Path $upgradeGit -Content ([IO.File]::ReadAllText($legacyGit) + "`n[user]`n name = Upgrade User`n[core]`n editor = special-editor`n")
+    Install-ManagedGitConfig -Source $sourcePath -Destination $upgradeGit -LegacyConfigs @($legacyGit)
+    Assert-True ((& git config --file $upgradeGit --includes --get user.name) -eq 'Upgrade User') 'Legacy Git migration lost identity.'
+    Assert-True ((& git config --file $upgradeGit --includes --get core.editor) -eq 'special-editor') 'Legacy Git migration lost an explicit override.'
+    Assert-True (-not ([IO.File]::ReadAllText($upgradeGit).Contains('longpaths = true'))) 'Historical Git defaults remained in the user file.'
+
+    function Set-ExecutionPolicy {
+        throw [Management.Automation.ErrorRecord]::new([Exception]::new('Policy is overridden'), 'ExecutionPolicyOverride', [Management.Automation.ErrorCategory]::PermissionDenied, $null)
+    }
+    function Get-ExecutionPolicy { return 'Bypass' }
+    Set-SetupExecutionPolicy
+    Assert-True $true 'Execution policy override prevented setup.'
+    $script:providerInstalls = 0
+    $script:sourceRegistrations = 0
+    function Get-PackageProvider { return [pscustomobject]@{ Version = [version]'2.8.5.208' } }
+    function Get-PackageSource { return [pscustomobject]@{ Name = 'nugetRepository' } }
+    function Install-PackageProvider { $script:providerInstalls++ }
+    function Register-PackageSource { $script:sourceRegistrations++ }
+    Initialize-SetupPackageSources
+    Initialize-SetupPackageSources
+    Assert-True ($script:providerInstalls -eq 0 -and $script:sourceRegistrations -eq 0) 'Preflight attempted to reregister existing sources.'
+    Invoke-SetupPhase -Phase terminal-deferred -Body { Request-PhaseRetry -Reason 'No settings file yet' }
+    Assert-True (-not (Test-PhaseComplete -State $state -Phase terminal-deferred) -and $script:deferredPhases -contains 'terminal-deferred') 'Deferred terminal settings became permanently complete.'
+
+    # A real native process emits both streams. Windows PowerShell 5.1 must retain its exit code.
+    $nativeProbe = Join-Path $testRoot 'native-stderr.ps1'
+    Set-Content -LiteralPath $nativeProbe -Value "[Console]::Error.WriteLine('diagnostic'); [Console]::Out.WriteLine('Ubuntu'); exit 0"
+    $nativeResult = Invoke-SetupNative -FilePath powershell.exe -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $nativeProbe)
+    Assert-True ($nativeResult.ExitCode -eq 0 -and $nativeResult.Output -contains 'Ubuntu') 'Native diagnostic stderr threw or lost stdout.'
+    Assert-True ($ErrorActionPreference -eq 'Stop') 'Native invocation changed caller error preference.'
     Write-Host "Passed $script:checks regression assertions on PowerShell $($PSVersionTable.PSVersion)."
 }
 finally {

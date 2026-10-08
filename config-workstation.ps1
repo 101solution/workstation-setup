@@ -73,13 +73,6 @@ param (
 
 $ErrorActionPreference = 'Continue'
 
-# Validate the selected manifest before changing machine settings or saved progress.
-$packageConfigBase = Get-Content -LiteralPath "$PSScriptRoot\packages-min.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-$packageConfig = $null
-if ($role -ne 'min') {
-    $packageConfig = Get-Content -LiteralPath "$PSScriptRoot\packages-$role.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-}
-
 $logFilePath = "$PSScriptRoot\logs\workstation-config.log"
 if (-not (Test-Path $logFilePath)) {
     New-Item -Path $logFilePath -ItemType File -Force | Out-Null
@@ -89,6 +82,20 @@ $null = Start-Transcript $logFilePath -Append
 # All logging goes through Write-SetupLog (defined in helper.ps1), so nothing is logged before this.
 . $PSScriptRoot\helper.ps1
 Write-SetupLog "Helper loaded from $PSScriptRoot\helper.ps1"
+
+# Start the transcript first so invalid manifests leave actionable diagnostics.
+try {
+    $packageConfigBase = Get-Content -LiteralPath "$PSScriptRoot\packages-min.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    $packageConfig = $null
+    if ($role -ne 'min') {
+        $packageConfig = Get-Content -LiteralPath "$PSScriptRoot\packages-$role.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    }
+}
+catch {
+    Write-SetupLog "Manifest validation failed for role '$role': $($_.Exception.Message)"
+    Stop-Transcript | Out-Null
+    exit 1
+}
 
 # Rebuild the exact invocation to replay after a reboot, before anything can mutate $PSBoundParameters.
 $resumeCommand = Get-ResumeCommand -ScriptPath (Join-Path $PSScriptRoot 'config-workstation.ps1') `
@@ -149,10 +156,7 @@ if (@($state.completedPhases).Count -gt 0) {
 # ---------------------------------------------------------------------------------------------
 Invoke-SetupPhase -Phase 'preflight' -Body {
     Write-SetupLog "Register NuGet source ..."
-    Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2 `
-        -ForceBootstrap -Force | Out-Null
-
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+    Initialize-SetupPackageSources
 
     # Without this, Install-Module stops to confirm an untrusted repository.
     Write-SetupLog "Trusting the PSGallery repository so module installs do not prompt ..."
@@ -289,8 +293,7 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     if (-not $pwsh) {
         throw "pwsh.exe not found. This phase depends on the winget phase installing Microsoft.PowerShell; it will be retried once that has succeeded."
     }
-    & $pwsh.Source -NoProfile -command "& {Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop}" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not configure PowerShell execution policy.' }
+    Set-SetupExecutionPolicy
 
     Write-SetupLog "Copy ps profile"
     $psProfilePath = $PROFILE.CurrentUserAllHosts -Replace "WindowsPowerShell", "Powershell"
@@ -300,10 +303,11 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     if (-not (Test-Path -LiteralPath (Split-Path -Parent $psProfilePath))) {
         New-Item -ItemType Directory -Path (Split-Path -Parent $psProfilePath) -Force | Out-Null
     }
-    Backup-SetupFile -Path $profileFragment
-    $profileContent -replace "#workFolder#", $defaultWorkFolder | Out-File -LiteralPath $profileFragment -Encoding utf8 -Force
+    $fragmentContent = ($profileContent -replace "#workFolder#", $defaultWorkFolder) -join [Environment]::NewLine
+    Backup-SetupFile -Path $profileFragment -NewContent $fragmentContent
+    [IO.File]::WriteAllText($profileFragment, $fragmentContent, (New-Object Text.UTF8Encoding($true)))
     Unblock-File -LiteralPath $profileFragment
-    Set-ManagedProfileLoader -Path $psProfilePath -LegacyContent (($profileContent -replace "#workFolder#", $defaultWorkFolder) -join [Environment]::NewLine)
+    Set-ManagedProfileLoader -Path $psProfilePath -LegacyContent $fragmentContent -LegacyProfiles @("$PSScriptRoot\legacy\v2.5.2\profile.ps1")
 
     # path-health.ps1 sits NEXT TO the profile, which dot-sources it via $PSScriptRoot. No token
     # substitution and no BOM concern: it is a .ps1, and under 5.1 a BOM actually helps decoding
@@ -343,7 +347,7 @@ Invoke-SetupPhase -Phase 'shell' -Body {
     Save-Utf8NoBom -Path "$poshThemesPath\rudolfs-light-cs.omp.json" -Content $poshJson
 
     Write-SetupLog "Copy git config..."
-    Install-ManagedGitConfig -Source "$PSScriptRoot/.gitconfig" -Destination (Join-Path $env:UserProfile '.gitconfig')
+    Install-ManagedGitConfig -Source "$PSScriptRoot/.gitconfig" -Destination (Join-Path $env:UserProfile '.gitconfig') -LegacyConfigs @("$PSScriptRoot\legacy\v2.5.2\.gitconfig")
     if (("" -ne $gitUser -or "" -ne $gitEmail) -and -not (Get-Command -Name git.exe -ErrorAction SilentlyContinue)) {
         throw "git.exe not found, so -gitUser/-gitEmail cannot be applied. This phase depends on the winget phase installing Git.Git."
     }
@@ -379,7 +383,8 @@ Invoke-SetupPhase -Phase 'terminal' -Body {
     }
 
     if (-not (Test-Path -LiteralPath $terminalSettingFile)) {
-        throw 'Windows Terminal settings file still absent; retry terminal configuration after first launch.'
+        Request-PhaseRetry -Reason 'Windows Terminal settings are absent; launch Terminal, then rerun setup.'
+        return
     }
 
     Write-SetupLog "Update Windows Terminal Settings"
@@ -424,8 +429,7 @@ Invoke-SetupPhase -Phase 'wsl-distro' -Body {
     }
 
     Write-SetupLog "Updating the WSL runtime ..."
-    & wsl.exe --update | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'WSL runtime update failed.' }
+    Update-SetupWslRuntime
     & wsl.exe --set-default-version 2 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not set the default WSL version to 2.' }
 
