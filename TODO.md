@@ -1,6 +1,6 @@
 # Repo Fix Backlog
 
-## v2.6.0 release gate (2026-10-15)
+## v2.6.0 installation validation (2026-10-15)
 
 Windows 11 Enterprise 24H2 and Windows Server 2025 installation validation is
 complete. Both passed full `mrl` setup, configuration preservation, Windows
@@ -11,7 +11,7 @@ passed. See VALIDATION-HISTORY.md for the precise matrix and client fresh-OS lim
 
 Local checks pass 55 assertions on PowerShell 7/5.1, 13 PowerShell files, eight
 JSON files, Bash syntax/failure tests and Terraform formatting/validation.
-Final green GitHub CI and publication remain pending.
+GitHub CI and publication are tracked in [release PR #9](https://github.com/101solution/workstation-setup/pull/9).
 
 WSL container Compose and Dev Containers compatibility remains unverified.
 Linux Docker CE is available through `-installLinuxDocker` for API workflows.
