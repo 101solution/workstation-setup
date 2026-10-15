@@ -1,5 +1,40 @@
 # Validation History
 
+## Published v2.6.0 clean Windows 11 validation (2026-10-15)
+
+The operator ran the documented `mrl` bootstrap on a freshly restored Windows
+11 Enterprise 24H2 guest and confirmed v2.6.0. Before installation, the guest
+had no setup state, checkout, installation markers, or validation/resume tasks;
+WSL and VirtualMachinePlatform were Disabled. Retained managed Run Commands had
+been removed before this restore. An earlier restore was discarded after those
+commands replayed old validation tasks; it does not count as a clean test.
+
+Final state and transcript inspection confirmed all nine phases plus `done`,
+runCount 2, rebootCount 1, successful `mrl` completion, and removal of the
+workstation resume task. The first WinGet pass failed for Bruno.Bruno with
+0x8A150006. Reboot continuation retried the incomplete phase, logged Bruno
+installed/upgraded, completed WinGet, and recorded `done`. Installed registration
+confirmed Bruno 4.2.1. This also verified recovery of a real package failure.
+
+The operator supplied fresh-shell results for PowerShell 7.6.7, Git
+2.55.0.windows.5, .NET SDK 10.0.402, Terraform 1.16.5 and WSL 3.0.3.0 with kernel
+6.18.54.1-1 on Windows 10.0.26100.9457. Ubuntu was listed as WSL 2 with the
+configured user's default account. The deployed `docker` alias resolved to
+wslc.exe, and `docker run --rm hello-world` succeeded.
+
+The optional Windows Docker follow-up also passed the operator's consuming-tool
+checks: client and server 29.8.0, API 1.56, Windows/amd64, context win;
+`docker-w run --rm hello-world` ran the Windows-amd64 nanoserver-ltsc2025 image.
+The WSL-backed `docker run --rm hello-world` still succeeded afterward. Docker
+installer state/transcript/reboot counts were not inspected for this follow-up.
+Optional Linux Docker CE/API, Compose and Dev Containers were not exercised.
+
+Terraform reported that patch 1.16.6 is available; its version command succeeded.
+Profile startup took 15.310 seconds; repeat timings were not tested. Detailed
+guest reports and transcripts remain local. The clean published Windows 11
+`mrl` installation, reboot resume, package retry and requested container checks
+passed. The prior Server 2025 validation below was not repeated after publication.
+
 ## v2.6.0 release validation (2026-10-15)
 
 The tested candidate's installation code is unchanged in this release. Validation

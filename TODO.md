@@ -7,7 +7,9 @@ complete. Both passed full `mrl` setup, configuration preservation, Windows
 Docker default and reboot resume, and Windows/WSL container consuming-tool
 checks. Client upgrade, second-user setup, optional Linux Docker failure/retry
 and `-force` reboot resume passed. Server package retry and Docker replacement
-passed. See VALIDATION-HISTORY.md for the precise matrix and client fresh-OS limit.
+passed. Published v2.6.0 subsequently passed a clean Windows 11 `mrl` install,
+one reboot/resume, real package-failure recovery, and Windows/WSL container runs
+on 2026-10-15. See VALIDATION-HISTORY.md for the precise matrix and remaining limits.
 
 Local checks pass 55 assertions on PowerShell 7/5.1, 13 PowerShell files, eight
 JSON files, Bash syntax/failure tests and Terraform formatting/validation.

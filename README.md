@@ -16,8 +16,10 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
-Role `mrl` was validated on 2026-10-13 on **Windows 11 Enterprise 24H2 and Windows
-Server 2025**, including the Windows Docker default and Windows/WSL container runs.
+Published v2.6.0 role `mrl` passed a clean **Windows 11 Enterprise 24H2** test on
+2026-10-15, including one reboot/resume, package failure recovery, Ubuntu and
+Windows/WSL container runs. The same setup code passed **Windows Server 2025**
+validation on 2026-10-13.
 See [VALIDATION-HISTORY.md](VALIDATION-HISTORY.md) for the release matrix and limits.
 Earlier `mrldev` validation on both SKUs (2026-09-16) completed nine phases and one
 reboot in 33 minutes, including Visual Studio Enterprise 2026.
