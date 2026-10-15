@@ -1,5 +1,59 @@
 # Validation History
 
+## v2.6.0 release validation (2026-10-15)
+
+The tested candidate's installation code is unchanged in this release. Validation
+ran on disposable Windows 11 Enterprise 24H2 and Windows Server 2025 guests on
+2026-10-13. Detailed transcripts, reports, and overlay hashes remain local.
+
+| Scenario | Windows 11 Enterprise 24H2 | Windows Server 2025 |
+| --- | --- | --- |
+| Full `mrl` setup and deployed profile | Passed | Passed |
+| Role/work-folder changes, custom profile/Git preservation and idempotency | Passed | Passed |
+| Windows-only Docker default, feature reboot/resume and API 29.8.0 | Passed | Passed |
+| `docker-w run --rm hello-world` through deployed profile | Passed | Passed |
+| WSL/wslc 3.0.3 hello-world, Alpine build/run and nginx localhost forwarding | Passed | Passed |
+| Published v2.5.2 archive upgrade to candidate | Passed | Not repeated |
+| Second-user packages/profile/WSL and fresh-shell containers | Passed | Not repeated |
+| Optional Linux Docker CE install, hello-world, failure and retry | Passed | Not repeated |
+| Real WinGet package failure and corrected-source retry | Not repeated | Passed |
+| Windows Docker replacement 29.7.0 to 29.8.0, both binaries and HTTP API | Not repeated | Passed |
+| Workstation WSL feature reboot/resume | Passed after feature reset | Passed from clean OS |
+
+Client upgrade completed both the official v2.5.2 archive and candidate runs with
+exit 0, preserved appended profile content and changed Git identity, migrated
+completion to the interactive user SID, and recorded all phases and `done`.
+The second user's six user phases completed separately, with a distinct Ubuntu
+user, passwordless sudo, and a successful fresh-profile wslc hello-world.
+
+The client feature-reset test returned 3010 with one reboot recorded; saved
+continuation omitted `-force`. After logon, run 2 completed, skipped completed
+phases and removed its resume task. A final fresh-shell container/profile check
+passed. This exercised feature re-enablement on a configured guest; the client's
+full `mrl` run used WSL features prepared earlier, not a fresh OS reinstall.
+
+Linux Docker CE 29.9.0 ran hello-world on the client. An injected installer exit
+42 made setup exit 1 with `docker-linux` and `done` unrecorded while the existing
+daemon remained reachable. Restoring the installer and retrying exited 0 and
+recorded completion. Omitting `-installLinuxDocker` afterward preserved the
+existing user `DOCKER_HOST` and keepalive task.
+
+Server package retry used a real Git.Git request against a missing WinGet source:
+setup exited 1 and left `winget` and `done` unrecorded. Correcting the source and
+retrying exited 0 and recorded both. Windows Docker version replacement verified
+client, daemon, HTTP API and a final hello-world container.
+
+Local recheck on 2026-10-15: 55 regression assertions passed on PowerShell 7.6.7
+and Windows PowerShell 5.1.26100.33438; all 13 PowerShell files parsed with zero
+errors; eight JSON files and manifest schema checks passed. Bash syntax and both
+mocked installer failure tests passed. Terraform formatting/provider validation
+passed. GitHub CI must pass on the release commit before publication.
+
+WSL container Compose and Dev Containers compatibility remains unverified.
+The optional Linux Docker API path is available; these integrations were not
+validated there during this run either. No new `mrldev` full installation was
+performed in this release matrix.
+
 Closed work for `workstation-setup`: the 2026-09-11 script audit (items 1-22) and the
 unattended-setup goal (G1-G35), including the nine bugs that only a real machine exposed.
 Split out of `TODO.md` on 2026-09-16 so the backlog shows only open work. **Item numbers are

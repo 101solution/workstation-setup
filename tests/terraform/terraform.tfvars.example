@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars and supply actual values.
+# Supply subscription_id through TF_VAR_subscription_id, as shown in README.md.
+rdp_source_cidr = "203.0.113.10/32"
+os              = "server2025"
+# vm_size       = "Standard_D4s_v5"
+# image_version = "<resolved image version>"

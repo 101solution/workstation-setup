@@ -69,9 +69,15 @@ Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
         }
 }
 
-# Bare `docker` targets the WSL2 Linux daemon on 2375; the Windows daemon is a separate context on
-# 2378. See docker-ce/README.md.
-function docker-w { docker -c win @args }
+# docker runs WSL containers; docker-w reaches the Windows Docker win context.
+# Use docker.exe explicitly for workflows requiring the Docker CLI/API.
+$wslcCommand = Get-Command wslc.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
+if (-not $wslcCommand) {
+    $wslcCommand = Join-Path $env:ProgramFiles 'WSL\wslc.exe'
+    if (-not (Test-Path -LiteralPath $wslcCommand)) { $wslcCommand = 'wslc.exe' }
+}
+Set-Alias -Name docker -Value $wslcCommand
+function docker-w { docker.exe -c win @args }
 
 # PATH auditing (Test-PathHealth / Repair-PathHealth), deployed next to this profile by
 # config-workstation.ps1. Guarded exactly like carapace and zoxide above: a machine where the file

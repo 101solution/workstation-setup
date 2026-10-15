@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Driven unattended by config-docker.ps1, so nothing here may wait for input. apt honours
 # DEBIAN_FRONTEND; the `gpg --yes` below is the other half of that rule.
