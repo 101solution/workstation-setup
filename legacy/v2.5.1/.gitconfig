@@ -1,0 +1,33 @@
+[diff]
+    tool = vscode
+[difftool]
+    prompt = false
+[difftool "vscode"]
+    cmd = code --wait --diff $LOCAL $REMOTE
+
+[merge]
+    tool = vscode
+[mergetool]
+    keepBackup = false
+[mergetool "vscode"]
+    trustExitCode = true
+    cmd = code --wait $MERGED
+[alias]
+    st = status
+    co = checkout
+    pl = pull --all
+    cb = checkout -b   
+    br = branch --format='%(HEAD) %(color:yellow)%(refname:short)%(color:reset) - %(contents:subject) %(color:green)(%(committerdate:relative)) [%(authorname)]' --sort=-committerdate
+    ci = !git add -A && git commit -m
+    undo = reset HEAD~1 --mixed
+    rt = !git reset --hard
+    pu = "!git push --set-upstream origin $(git symbolic-ref --short HEAD)"
+    lg = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
+    sq = !git reset --soft 
+[core]
+	editor = code --wait --new-window
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true

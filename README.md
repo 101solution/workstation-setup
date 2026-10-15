@@ -16,10 +16,11 @@ This downloads the latest release to `c:\config\workstation` and runs `config-wo
 away: if Windows restarts, a logon-triggered task finishes the last step (registering the Ubuntu
 distro) and removes itself.
 
-Last validated end to end on 2026-09-16, on **both a Windows 11 Enterprise 24H2 client and a Windows
-Server 2025 box**: role `mrldev` in 9 phases, one reboot, 33 minutes including Visual Studio
-Enterprise 2026, and role `mrl` in 16 minutes. The Docker CE step, with both daemons verified, passed
-on Windows 11 on 2026-09-14 and on Server 2025 on 2026-09-16.
+Role `mrl` was validated on 2026-10-13 on **Windows 11 Enterprise 24H2 and Windows
+Server 2025**, including the Windows Docker default and Windows/WSL container runs.
+See [VALIDATION-HISTORY.md](VALIDATION-HISTORY.md) for the release matrix and limits.
+Earlier `mrldev` validation on both SKUs (2026-09-16) completed nine phases and one
+reboot in 33 minutes, including Visual Studio Enterprise 2026.
 
 To set your git identity at the same time, add `-gitUser` and `-gitEmail` — they are forwarded to
 `config-workstation.ps1`:
@@ -30,6 +31,11 @@ Invoke-RestMethod -Uri "https://raw.githubusercontent.com/101solution/workstatio
 
 Without them the shipped `.gitconfig` sets no identity, so `git commit` will ask who you are.
 
+On existing workstations, setup preserves Git identity and custom settings. Defaults are loaded
+through `.workstation.gitconfig`, with existing user settings taking precedence. The PowerShell
+profile loads a managed `workstation-profile.ps1` fragment while keeping custom profile content.
+Profile and Git configuration files receive adjacent `.workstation-backup-*` copies before updates.
+
 ### Updating a machine that is already set up
 
 Run the same one-liner again. It downloads whatever release is now Latest, notices that this machine
@@ -39,7 +45,7 @@ counts as a mismatch. Expect roughly the time of a fresh run minus the reboot �
 enabled, so there is none.
 
 This needs the Latest release to be `v2.5.2` or newer, since the mismatch is detected by the
-release's own `config-workstation.ps1`. `v2.5.2` is Latest, so the one-liner handles it. On an older
+release's own `config-workstation.ps1`. Current releases support this, so the one-liner handles it. On an older
 release the one-liner cannot detect anything — it says so rather than pretending, and you then redo
 the phases yourself with `-force`. Without it the run finds its saved progress, skips every phase in
 about a second and reports success having installed nothing:
@@ -98,6 +104,12 @@ Setup runs as a series of named phases. Each completed phase is recorded in
 finished work is skipped and only what is left runs. A phase that fails is logged and retried on the
 next run rather than aborting the build.
 
+User configuration, package installation, and WSL registration progress is tracked per Windows
+user SID. Role, manifest, and configuration changes invalidate affected phases automatically.
+Older state files rerun affected phases once. `-force` resets only the initial run; reboot
+continuation keeps newly recorded progress. Required cmdlet and package failures produce exit
+code 1 and leave failed phases retryable.
+
 Skipping applies to *resuming an interrupted setup*, not to installing a newer release. The state
 file also records the release tag it was set up by, so when the one-liner fetches a newer release
 the phases are redone rather than skipped — otherwise an existing machine could never be upgraded.
@@ -131,14 +143,27 @@ Transcript logs are written to `logs\` next to the script as `workstation-config
 `config-workstation.ps1` installs or needs Docker, so skip this section entirely if you do not
 want it.
 
-Run it *after* the workstation setup has finished, because the Linux daemon is installed inside
-the WSL2 Ubuntu distro that setup registers:
+For Linux containers, WSL 2.9.3+ includes `wslc.exe` with no separate engine install:
+
+```powershell
+wsl --update
+wslc run --rm hello-world
+```
+
+The deployed PowerShell profile aliases `docker` to `wslc`. Use `docker run --rm
+hello-world` for WSL Linux containers and `docker-w run hello-world` for Windows
+Docker containers. Use `docker.exe` explicitly when you need the real Docker CLI.
+
+For Windows Docker containers, run the optional installer after workstation setup:
 
 ```powershell
 powershell.exe -executionpolicy bypass -file .\docker-ce\config-docker.ps1
 ```
 
-It installs a Windows Docker daemon and a Linux one inside WSL2 side by side, with the same
+It installs a Windows Docker daemon. Add `-installLinuxDocker` to also install Linux Docker CE
+inside Ubuntu for workflows requiring the Docker API. WSL container's Compose and Dev Containers
+compatibility has not been validated. Existing Linux Docker installations are retained.
+The installer has the same
 unattended phase/resume behaviour and the same `-resumeMethod`, `-noReboot` and `-force` switches.
 It keeps its own state file, so its progress and the workstation setup's can never interfere.
 Details in [docker-ce/README.md](docker-ce/README.md).
@@ -148,14 +173,14 @@ It is a separate script rather than another phase because each entry point is de
 the WSL2 distro, while `dockerd` cannot start until the Containers feature is live, which needs a
 restart of its own.
 
-Note that bare `docker` needs the WSL distro running, and WSL2 shuts an idle distro down after
+With `-installLinuxDocker`, `docker.exe` needs the WSL distro running, and WSL2 shuts an idle distro down after
 about a minute. The install registers an at-logon task (`docker-ce-wsl-autostart`) that holds a
-session open for you — it comes with this step, so a workstation-only machine will not have it.
-If bare `docker` ever does fail, start the distro and retry:
+session open for you. This task is only installed when Linux Docker CE is requested.
+If `docker.exe` cannot reach the Linux Docker daemon, start the distro and retry:
 
 ```powershell
 wsl -d Ubuntu -- /bin/true
-docker run hello-world
+docker.exe run hello-world
 ```
 
 Both flows have passed end to end on a fresh machine (2026-09-14, run 7 in `VALIDATION-HISTORY.md`): the Windows
@@ -202,3 +227,17 @@ PowerShell cannot complete on its own. Prompt and editing setup are inspired by:
 - [You should be customizing your PowerShell Prompt with PSReadLine](https://www.hanselman.com/blog/you-should-be-customizing-your-powershell-prompt-with-psreadline)
 
 ![Windows Terminal](win-term.png)
+
+## Contributor checks
+
+For a disposable Azure VM with a fresh OS disk snapshot, use the
+[Terraform test rig](tests/terraform/README.md). It defaults to one D2s_v5 VM with
+Standard HDD storage and nightly shutdown; choose Windows Server 2025 or Windows 11.
+
+Run `pwsh -NoProfile -File .\scripts\verify.ps1` for PowerShell parsing, JSON/manifest validation,
+and regression tests. Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\setup-regression.ps1`
+for Windows PowerShell 5.1 compatibility. With Bash available, run
+`bash -n docker-ce/install-docker-ce.sh` and `bash tests/docker-installer.sh`.
+GitHub Actions runs these checks on Windows and Linux. Tests use disposable files and mocked
+installers. Installation changes still require end-to-end validation on Windows 11 Enterprise
+24H2 and Windows Server 2025, including retries and reboot resume.
