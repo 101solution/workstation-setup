@@ -21,6 +21,9 @@ Published v2.6.0 role `mrl` passed a clean **Windows 11 Enterprise 24H2** test o
 Windows/WSL container runs. The same setup code passed **Windows Server 2025**
 validation on 2026-10-13.
 See [VALIDATION-HISTORY.md](VALIDATION-HISTORY.md) for the release matrix and limits.
+A Terraform-provisioned Windows 11 workstation also passed reboot resume, task
+cleanup, and PowerShell/Git/.NET/Terraform/Ubuntu checks on 2026-11-09. Docker
+was not retested in that follow-up.
 Earlier `mrldev` validation on both SKUs (2026-09-16) completed nine phases and one
 reboot in 33 minutes, including Visual Studio Enterprise 2026.
 

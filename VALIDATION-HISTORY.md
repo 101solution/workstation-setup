@@ -1,5 +1,33 @@
 # Validation History
 
+## Terraform provisioning task resume and cleanup verified (2026-11-09)
+
+A redeployed Windows 11 workstation used the published v2.6.0 scripts, confirmed
+by normalized SHA256 hashes of `config-workstation.ps1` and `helper.ps1`. Terraform
+created `workstation_config` and passed that name to setup. The initial run completed
+the package and shell phases, then rebooted for WSL features. After the operator
+signed in again, the same task resumed setup as run 2; no duplicate task or installer
+process was observed.
+
+WSL runtime update, unattended Ubuntu installation, and user provisioning completed.
+The final saved state contained all nine phases plus `done`, with runCount 2 and
+rebootCount 1. Guest checks then found zero workstation tasks and zero setup
+processes, confirming the provisioning task was removed on completion.
+
+Consuming-tool checks ran in the signed-in administrator's PowerShell 7 session:
+PowerShell 7.6.9, Git 2.55.0.windows.5, .NET SDK 10.0.402, and Terraform 1.16.5
+were confirmed. Ubuntu was registered as WSL 2; `whoami` returned the provisioned
+default user and PID 1 was `systemd`. Every native check exited 0. The one-off
+validation task had no logon trigger and was removed afterward.
+
+This verifies the bootstrap task-name fix across an actual reboot and user logon.
+Docker was not tested in this follow-up. The state version field remains null
+because the Terraform bootstrap downloads a release without forwarding
+`-setupVersion`; script hashes establish the tested release. Detailed guest
+evidence remains local. The Terraform fixes are tracked in
+[az-dev-vm-tf PR #18](https://github.com/101solution/az-dev-vm-tf/pull/18) and
+[PR #19](https://github.com/101solution/az-dev-vm-tf/pull/19).
+
 ## Published v2.6.0 clean Windows 11 validation (2026-10-15)
 
 The operator ran the documented `mrl` bootstrap on a freshly restored Windows

@@ -11,6 +11,11 @@ passed. Published v2.6.0 subsequently passed a clean Windows 11 `mrl` install,
 one reboot/resume, real package-failure recovery, and Windows/WSL container runs
 on 2026-10-15. See VALIDATION-HISTORY.md for the precise matrix and remaining limits.
 
+A Terraform-provisioned Windows 11 follow-up passed on 2026-11-09: the same task
+resumed after reboot, all nine phases plus `done` were recorded, the task was
+removed, and signed-in user checks passed for PowerShell/Git/.NET/Terraform and
+Ubuntu WSL 2 with systemd. Docker was not retested in this follow-up.
+
 Local checks pass 55 assertions on PowerShell 7/5.1, 13 PowerShell files, eight
 JSON files, Bash syntax/failure tests and Terraform formatting/validation.
 GitHub CI and publication are tracked in [release PR #9](https://github.com/101solution/workstation-setup/pull/9).
